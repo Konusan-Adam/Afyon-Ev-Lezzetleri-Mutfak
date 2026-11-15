@@ -1,0 +1,53 @@
+{
+  "entities": {
+    "Mutfak": {
+      "title": "Mutfak",
+      "description": "Ev mutfağı ve aşçı profili",
+      "type": "object",
+      "properties": {
+        "kimlik": { "type": "string" },
+        "isletme_adi": { "type": "string" },
+        "acik_mi": { "type": "boolean" }
+      }
+    },
+    "Yemek": {
+      "title": "Yemek",
+      "description": "Mutfak menü öğesi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "baslik": { "type": "string" },
+        "fiyat": { "type": "number" },
+        "mutfak_id": { "type": "string" }
+      }
+    },
+    "Siparis": {
+      "title": "Siparis",
+      "description": "Yemek siparişi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "durum": { "type": "string" },
+        "toplam_tutar": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/mutfaklar/{mutfakId}": {
+      "schema": "Mutfak",
+      "description": "Kayıtlı ev mutfakları"
+    },
+    "/yemekler/{yemekId}": {
+      "schema": "Yemek",
+      "description": "Mutfak yemekleri"
+    },
+    "/siparisler/{siparisId}": {
+      "schema": "Siparis",
+      "description": "Mutfak ve müşteri siparişleri"
+    },
+    "/tamamlanan_siparisler/{siparisId}": {
+      "schema": "Siparis",
+      "description": "Tamamlanan siparişler"
+    }
+  }
+}

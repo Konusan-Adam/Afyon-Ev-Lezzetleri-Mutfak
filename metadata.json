@@ -1,0 +1,6 @@
+{
+  "name": "Afyon Ev Lezzetleri Mutfak",
+  "description": "Afyon Ev Lezzetleri Mutfak",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
