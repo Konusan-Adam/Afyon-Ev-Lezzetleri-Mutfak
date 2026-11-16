@@ -98,20 +98,13 @@ export function useMutfakBildirimleri(
         zaman: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       });
 
-      // Yalnızca onay bekleyen siparişlerde en fazla 2 kez (15 sn arayla) hatırlat, sonsuz çalma
+      // Mutfak siparişi onaylayana veya reddedene kadar her 15 saniyede bir ısrarla hatırlat
       if (tekrarZiliRef.current) clearInterval(tekrarZiliRef.current);
       if (!siparis.durum || siparis.durum === 'beklemede') {
-        let tekrarSayisi = 0;
         tekrarZiliRef.current = setInterval(() => {
-          tekrarSayisi += 1;
-          if (tekrarSayisi > 2) {
-            clearInterval(tekrarZiliRef.current);
-            tekrarZiliRef.current = null;
-            return;
-          }
           mutfakZiliCal(
             'Onay Bekleyen Sipariş! 🔔',
-            `#${kod} nolu sipariş ocakta pişirilmeyi bekliyor.`,
+            `#${kod} nolu sipariş onaylanmayı veya reddedilmeyi bekliyor!`,
             { sureSn: 4 }
           );
         }, 15000);

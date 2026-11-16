@@ -8,17 +8,20 @@ import {
 const GITHUB_REPO = 'Konusan-Adam/Afyon-Ev-Lezzetleri-Mutfak';
 const GITHUB_LATEST_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 
-function surumKarsilastir(yeni: string, mevcut: string): number {
-  const temiz = (s: string) =>
-    s
-      .replace(/^v/i, '')
-      .split('-')[0]
-      .split('.')
-      .map((n) => parseInt(n, 10) || 0);
+function surumSayilariCikar(metin: string): number[] {
+  if (!metin) return [0, 0, 0];
+  // 'AEL-V.1', 'v1.0.1', 'AEL-V.2.0' gibi formatlardan sayıları ayıkla
+  const eslesme = metin.match(/\d+(\.\d+)*/);
+  if (!eslesme) return [0, 0, 0];
+  const parcalar = eslesme[0].split('.').map((n) => parseInt(n, 10) || 0);
+  while (parcalar.length < 3) parcalar.push(0);
+  return parcalar;
+}
 
-  const a = temiz(yeni);
-  const b = temiz(mevcut);
-  const max = Math.max(a.length, b.length, 3);
+function surumKarsilastir(yeni: string, mevcut: string): number {
+  const a = surumSayilariCikar(yeni);
+  const b = surumSayilariCikar(mevcut);
+  const max = Math.max(a.length, b.length);
   for (let i = 0; i < max; i++) {
     const x = a[i] || 0;
     const y = b[i] || 0;

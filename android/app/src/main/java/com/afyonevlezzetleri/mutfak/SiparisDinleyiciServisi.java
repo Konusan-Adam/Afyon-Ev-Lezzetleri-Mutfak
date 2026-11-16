@@ -275,11 +275,12 @@ public class SiparisDinleyiciServisi extends Service {
             alarmOynatici.setAudioAttributes(attrs);
             Uri sesUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.nukleer_siren);
             alarmOynatici.setDataSource(this, sesUri);
-            alarmOynatici.setLooping(false);
+            alarmOynatici.setLooping(true);
             alarmOynatici.setVolume(1.0f, 1.0f);
             alarmOynatici.prepare();
             alarmOynatici.start();
 
+            // Mutfak onaylayana veya reddedene kadar çalar (aşırı pil tükenmesini önlemek için 5 dakika maksimum güvenlik sınırı)
             if (durdurZamanlayici == null || durdurZamanlayici.isShutdown()) {
                 durdurZamanlayici = Executors.newSingleThreadScheduledExecutor();
             }
@@ -288,7 +289,7 @@ public class SiparisDinleyiciServisi extends Service {
                 public void run() {
                     alarmiSustur();
                 }
-            }, 12, TimeUnit.SECONDS);
+            }, 300, TimeUnit.SECONDS);
         } catch (Throwable ignored) {
         }
     }
