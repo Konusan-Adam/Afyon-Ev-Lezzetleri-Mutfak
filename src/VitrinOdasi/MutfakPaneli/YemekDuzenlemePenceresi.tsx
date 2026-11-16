@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit3, Trash2, Check } from 'lucide-react';
+import { X, Edit3, Trash2, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { kategorileriGetir } from '@/src/MalzemeCekmeceleri/kategorileriGetir';
 import { testYemekGuncelle, testYemekSil } from '@/src/veritabani/CanliVeriYardimcisi';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
@@ -35,6 +35,9 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
   const [gunlukStok, setGunlukStok] = useState<number | ''>(
     yemek.gunluk_stok || (mevcutPorsiyon.sinirsizMi ? 10 : mevcutPorsiyon.gunlukToplam)
   );
+  const [satistaMi, setSatistaMi] = useState<boolean>(
+    yemek.stokta_var_mi !== false && yemek.tukendi_mi !== true
+  );
   const [kategori, setKategori] = useState(yemek.kategori || kategoriler[1]?.ad || 'Hamur İşleri & Bükme');
   const [altKategori, setAltKategori] = useState(yemek.alt_kategori || '');
   const [hazirlanmaSuresi, setHazirlanmaSuresi] = useState(yemek.hazirlanma_suresi || '20-30 dk');
@@ -45,11 +48,18 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
     ? altKategoriler.filter(a => a.ust_kategori_id === seciliKategoriNesnesi.id)
     : [];
   const [gorselUrl, setGorselUrl] = useState(yemek.gorsel_url || '');
+  const [gorselYukleniyor, setGorselYukleniyor] = useState(false);
   const [secenekGruplari, setSecenekGruplari] = useState<SecenekGrubu[]>(yemek.secenek_gruplari || []);
+  const [kaydediliyor, setKaydediliyor] = useState(false);
+  const [silmeOnayiAcik, setSilmeOnayiAcik] = useState(false);
   const [hata, setHata] = useState('');
 
-  const kaydet = (e: React.FormEvent) => {
+  const kaydet = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (gorselYukleniyor) {
+      setHata('Fotoğraf yüklemesi devam ediyor, lütfen bekleyiniz...');
+      return;
+    }
     if (!baslik.trim()) {
       setHata('Lütfen yemek adını yazınız.');
       return;
@@ -59,6 +69,7 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
       return;
     }
 
+    setKaydediliyor(true);
     const guncelVeri = {
       baslik: baslik.trim(),
       aciklama: aciklama.trim(),
@@ -67,8 +78,10 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
       gunluk_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
       kalan_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
       sinirsiz_stok: stokTipi === 'sinirsiz',
+      stokta_var_mi: satistaMi,
+      tukendi_mi: !satistaMi,
       kategori,
-      alt_kategori: altKategori || undefined,
+      alt_kategori: altKategori || '',
       hazirlanma_suresi: hazirlanmaSuresi,
       gorsel_url: gorselUrl.trim() || yemek.gorsel_url,
       secenek_gruplari: secenekGruplari
@@ -84,29 +97,30 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
     testYemekGuncelle(yemek.id, guncelVeri);
 
     if (canliFirebaseAktifMi()) {
-      belgeKaydet('yemekler', yemek.id, { ...yemek, ...guncelVeri });
+      await belgeKaydet('yemekler', yemek.id, { ...yemek, ...guncelVeri });
     }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('afyon_yemekler_guncellendi'));
     }
 
+    setKaydediliyor(false);
     onGuncellendi();
     onKapat();
   };
 
-  const yemeSil = () => {
-    if (window.confirm(`"${yemek.baslik}" lezzetini menünüzden kaldırmak istediğinize emin misiniz?`)) {
-      testYemekSil(yemek.id);
-      if (canliFirebaseAktifMi()) {
-        belgeSil('yemekler', yemek.id);
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('afyon_yemekler_guncellendi'));
-      }
-      onSilindi();
-      onKapat();
+  const yemeSil = async () => {
+    setKaydediliyor(true);
+    testYemekSil(yemek.id);
+    if (canliFirebaseAktifMi()) {
+      await belgeSil('yemekler', yemek.id);
     }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('afyon_yemekler_guncellendi'));
+    }
+    setKaydediliyor(false);
+    onSilindi();
+    onKapat();
   };
 
   return (
@@ -120,7 +134,7 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
             </div>
             <h3 className="font-bold text-sm text-white">Yemeği & Varyasyonları Düzenle</h3>
           </div>
-          <button onClick={onKapat} className="text-gray-400 hover:text-white cursor-pointer">
+          <button onClick={onKapat} disabled={kaydediliyor} className="text-gray-400 hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -132,6 +146,27 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
               {hata}
             </div>
           )}
+
+          {/* Satışta / Tükendi Durumu */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-[#18081A] border border-purple-900/50">
+            <div>
+              <span className="font-semibold text-gray-200 block">Satış Durumu</span>
+              <span className="text-[11px] text-gray-400">
+                {satistaMi ? 'Müşteriler bu yemeği sepete ekleyebilir' : 'Vitrinde "Tükendi" olarak işaretlenir'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSatistaMi((v) => !v)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                satistaMi
+                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                  : 'bg-rose-950/80 border-rose-500 text-rose-300'
+              }`}
+            >
+              {satistaMi ? '✅ Satışta' : '⛔ Bugün Tükendi'}
+            </button>
+          </div>
 
           {/* Yemek Adı */}
           <div>
@@ -289,6 +324,7 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
           <YemekGorselSecici
             secilenGorsel={gorselUrl}
             onGorselSec={setGorselUrl}
+            onYukleniyor={setGorselYukleniyor}
           />
 
           {/* Varyasyon ve Porsiyon Düzenleyici (Yemeksepeti Modeli) */}
@@ -310,12 +346,41 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
             />
           </div>
 
+          {/* Uygulama İçi Silme Onayı */}
+          {silmeOnayiAcik && (
+            <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-600/70 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-rose-200 text-xs font-medium">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>"{yemek.baslik}" menüden kalıcı olarak silinsin mi?</span>
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setSilmeOnayiAcik(false)}
+                  disabled={kaydediliyor}
+                  className="px-2.5 py-1 rounded-lg bg-purple-950 text-gray-200 text-[11px] font-bold cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={yemeSil}
+                  disabled={kaydediliyor}
+                  className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold cursor-pointer"
+                >
+                  Evet, Sil
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Alt Butonlar: Sil, Vazgeç, Güncelle */}
           <div className="pt-2 flex items-center justify-between gap-2 border-t border-purple-900/40">
             <button
               type="button"
-              onClick={yemeSil}
-              className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+              onClick={() => setSilmeOnayiAcik(true)}
+              disabled={kaydediliyor || gorselYukleniyor}
+              className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/60 font-semibold flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Menüden Sil</span>
@@ -325,16 +390,27 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
               <button
                 type="button"
                 onClick={onKapat}
-                className="px-4 py-2 rounded-xl bg-purple-950/80 border border-purple-800 text-gray-300 hover:text-white cursor-pointer"
+                disabled={kaydediliyor || gorselYukleniyor}
+                className="px-4 py-2 rounded-xl bg-purple-950/80 border border-purple-800 text-gray-300 hover:text-white cursor-pointer disabled:opacity-50"
               >
                 Vazgeç
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                disabled={kaydediliyor || gorselYukleniyor}
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold flex items-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
               >
-                <Check className="w-4 h-4 stroke-[3]" />
-                <span>Değişiklikleri Kaydet</span>
+                {(kaydediliyor || gorselYukleniyor) ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{gorselYukleniyor ? 'Fotoğraf Yükleniyor...' : 'Kaydediliyor...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    <span>Değişiklikleri Kaydet</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

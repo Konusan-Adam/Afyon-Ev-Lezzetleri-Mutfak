@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wallet,
   CreditCard,
@@ -11,52 +11,155 @@ import {
   Percent,
   Coins,
   ShieldCheck,
-  Send
+  Send,
+  Save,
+  Loader2
 } from 'lucide-react';
 import { useCanliHakedisTalepleri } from '@/src/MalzemeCekmeceleri/useCanliHakedisTalepleri';
-import { HakedisCekimTalebi } from '@/src/veritabani/GercekVeriYardimcisi';
+import { useKomisyonYonetimi } from '@/src/MalzemeCekmeceleri/useKomisyonYonetimi';
+import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
+import { koleksiyonGetir, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 
 interface MutfakCuzdanSekmesiProps {
   mutfakId: string;
   mutfakAdi: string;
   toplamSatisTutari: number;
+  kayitliKomisyonTutari?: number;
+}
+
+const VARSAYILAN_MUTFAK_IDLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
+
+function mutfakBelgesiEslesirMi(doc: any, mutfakId: string): boolean {
+  const docId = doc?.id || doc?.kimlik;
+  if (!docId) return false;
+  if (docId === mutfakId) return true;
+  return VARSAYILAN_MUTFAK_IDLER.includes(mutfakId) && VARSAYILAN_MUTFAK_IDLER.includes(docId);
 }
 
 export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
   mutfakId,
   mutfakAdi,
   toplamSatisTutari,
+  kayitliKomisyonTutari,
 }) => {
   const { talepler, yeniTalepOlustur } = useCanliHakedisTalepleri();
+  const { ayarlar, komisyonHesapla } = useKomisyonYonetimi();
 
-  // IBAN Bilgileri (Aşçı ilk defa girdiğinde saklanır)
-  const [hesapSahibi, setHesapSahibi] = useState('Zehra Çelik');
-  const [bankaAdi, setBankaAdi] = useState('Ziraat Bankası');
-  const [iban, setIban] = useState('TR33 0001 0001 2345 6789 0000 01');
+  // IBAN Bilgileri (Firestore'daki mutfak kaydından yüklenir ve kaydedilir)
+  const [hesapSahibi, setHesapSahibi] = useState('');
+  const [bankaAdi, setBankaAdi] = useState('');
+  const [subeIl, setSubeIl] = useState('Afyonkarahisar Merkez');
+  const [iban, setIban] = useState('');
   const [ibanDuzenlemeModu, setIbanDuzenlemeModu] = useState(false);
+  const [ibanKaydediliyor, setIbanKaydediliyor] = useState(false);
+  const [ibanMesaji, setIbanMesaji] = useState<string | null>(null);
 
   // Çekim Talebi Formu
   const [cekimTutari, setCekimTutari] = useState<number | ''>('');
   const [islemBasarili, setIslemBasarili] = useState(false);
   const [hataMesaji, setHataMesaji] = useState('');
-  const [guncellemeSayaci, setGuncellemeSayaci] = useState(0);
 
-  // Hesaplamalar: %10 platform hizmet bedeli
-  const komisyonOrani = 0.10;
-  const brutSatis = toplamSatisTutari > 0 ? toplamSatisTutari : 8500;
-  const platformKomisyonu = Math.round(brutSatis * komisyonOrani);
-  const toplamHakEdilenNet = brutSatis - platformKomisyonu;
+  useEffect(() => {
+    let aktif = true;
+    const yukle = async () => {
+      if (!canliFirebaseAktifMi() || !mutfakId) return;
+      try {
+        const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
+        const mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
+        if (aktif && mutfak) {
+          setHesapSahibi(mutfak.hesap_sahibi || mutfak.banka_bilgileri?.hesap_sahibi || '');
+          setBankaAdi(mutfak.banka_adi || mutfak.banka_bilgileri?.banka_adi || '');
+          setSubeIl(mutfak.sube_il || mutfak.banka_bilgileri?.sube_il || 'Afyonkarahisar Merkez');
+          setIban(mutfak.iban || mutfak.banka_bilgileri?.iban || '');
+        }
+      } catch (err) {
+        console.warn('Banka/IBAN bilgileri okunamadı:', err);
+      }
+    };
+    yukle();
+    return () => { aktif = false; };
+  }, [mutfakId]);
+
+  // Gerçek brüt satış ve dinamik komisyon hesaplama (sahte 8500 fallback yok!)
+  const brutSatis = Math.max(0, Number(toplamSatisTutari) || 0);
+  const mutfakKomisyonAyari = ayarlar.find((a) => a.tip === 'mutfak' && a.hedefId === mutfakId && a.aktif_mi);
+  const genelKomisyonAyari = ayarlar.find((a) => a.tip === 'genel' && a.aktif_mi);
+  const aktifKomisyonAyari = mutfakKomisyonAyari || genelKomisyonAyari;
+
+  const dinamikHesap = komisyonHesapla(mutfakId, brutSatis);
+  const platformKomisyonu =
+    typeof kayitliKomisyonTutari === 'number' && kayitliKomisyonTutari > 0
+      ? Math.round(kayitliKomisyonTutari * 100) / 100
+      : Math.round((dinamikHesap.komisyonTutari + dinamikHesap.platformBedeli) * 100) / 100;
+  const gosterilenOran = aktifKomisyonAyari ? aktifKomisyonAyari.oran : 0;
+  const toplamHakEdilenNet = Math.max(0, Math.round((brutSatis - platformKomisyonu) * 100) / 100);
 
   // Mutfak talepleri
-  const mutfakTalepleri = talepler.filter(t => t.mutfak_id === mutfakId);
+  const mutfakTalepleri = talepler.filter((t) =>
+    t.mutfak_id === mutfakId ||
+    (VARSAYILAN_MUTFAK_IDLER.includes(mutfakId) && VARSAYILAN_MUTFAK_IDLER.includes(t.mutfak_id || ''))
+  );
   const odenenToplam = mutfakTalepleri
-    .filter(t => t.durum === 'odendi')
-    .reduce((acc, t) => acc + t.tutar, 0);
+    .filter((t) => t.durum === 'odendi')
+    .reduce((acc, t) => acc + (Number(t.tutar) || 0), 0);
   const bekleyenToplam = mutfakTalepleri
-    .filter(t => t.durum === 'beklemede')
-    .reduce((acc, t) => acc + t.tutar, 0);
+    .filter((t) => t.durum === 'beklemede')
+    .reduce((acc, t) => acc + (Number(t.tutar) || 0), 0);
 
-  const cekilebilirNetBakiye = Math.max(0, toplamHakEdilenNet - odenenToplam - bekleyenToplam);
+  const cekilebilirNetBakiye = Math.max(0, Math.round((toplamHakEdilenNet - odenenToplam - bekleyenToplam) * 100) / 100);
+
+  const bankaBilgileriniKaydet = async () => {
+    setHataMesaji('');
+    setIbanMesaji(null);
+
+    const temizIban = iban.replace(/\s+/g, '').toUpperCase();
+    if (!hesapSahibi.trim() || !bankaAdi.trim() || !temizIban) {
+      setHataMesaji('Lütfen hesap sahibi, banka adı ve IBAN alanlarını eksiksiz doldurunuz.');
+      return;
+    }
+    if (!/^TR\d{24}$/.test(temizIban)) {
+      setHataMesaji('Geçersiz IBAN formatı! Türkiye IBAN numarası "TR" ile başlamalı ve toplam 26 karakter olmalıdır.');
+      return;
+    }
+
+    const formatliIban = temizIban.replace(/(.{4})/g, '$1 ').trim();
+    setIban(formatliIban);
+
+    if (canliFirebaseAktifMi() && mutfakId) {
+      setIbanKaydediliyor(true);
+      try {
+        const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
+        const mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
+        const hedefId = mutfak ? (mutfak.id || mutfak.kimlik) : mutfakId;
+
+        await belgeKaydet('mutfaklar', hedefId, {
+          ...(mutfak || {}),
+          id: hedefId,
+          hesap_sahibi: hesapSahibi.trim(),
+          banka_adi: bankaAdi.trim(),
+          sube_il: subeIl.trim() || 'Afyonkarahisar Merkez',
+          iban: formatliIban,
+          banka_bilgileri: {
+            hesap_sahibi: hesapSahibi.trim(),
+            banka_adi: bankaAdi.trim(),
+            sube_il: subeIl.trim() || 'Afyonkarahisar Merkez',
+            iban: formatliIban,
+            guncellenme_tarihi: new Date().toISOString(),
+          },
+        });
+        setIbanMesaji('Banka ve IBAN bilgileriniz kalıcı olarak kaydedildi.');
+        setIbanDuzenlemeModu(false);
+        setTimeout(() => setIbanMesaji(null), 3000);
+      } catch (err) {
+        console.warn('IBAN kaydetme hatası:', err);
+        setHataMesaji('Banka bilgileri kaydedilirken bir hata oluştu.');
+      } finally {
+        setIbanKaydediliyor(false);
+      }
+    } else {
+      setIbanDuzenlemeModu(false);
+    }
+  };
 
   const talepGonder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,15 +170,18 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
       return;
     }
     if (Number(cekimTutari) < 500) {
-      setHataMesaji('Minimum para çekim tutarı 500 ₺\'dir.');
+      setHataMesaji("Minimum para çekim tutarı 500 ₺'dir.");
       return;
     }
     if (Number(cekimTutari) > cekilebilirNetBakiye) {
       setHataMesaji(`Çekilebilir bakiyenizden (${cekilebilirNetBakiye} ₺) fazla tutar talep edemezsiniz.`);
       return;
     }
-    if (!iban.trim() || !hesapSahibi.trim()) {
-      setHataMesaji('Lütfen geçerli bir IBAN ve Hesap Sahibi adı giriniz.');
+
+    const temizIban = iban.replace(/\s+/g, '').toUpperCase();
+    if (!/^TR\d{24}$/.test(temizIban) || !hesapSahibi.trim() || !bankaAdi.trim()) {
+      setHataMesaji('Lütfen önce geçerli bir Hesap Sahibi, Banka Adı ve 26 haneli TR IBAN kaydediniz.');
+      setIbanDuzenlemeModu(true);
       return;
     }
 
@@ -90,12 +196,11 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
       banka_adi: bankaAdi.trim(),
       durum: 'beklemede',
       talep_tarihi: new Date().toLocaleString('tr-TR'),
-      aciklama: `${mutfakAdi} çekim talebi`
+      aciklama: `${mutfakAdi} (${subeIl || 'Merkez'}) çekim talebi`
     });
 
     setCekimTutari('');
     setIslemBasarili(true);
-    setGuncellemeSayaci(s => s + 1);
     setTimeout(() => setIslemBasarili(false), 4000);
   };
 
@@ -131,13 +236,15 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
           <div className="text-2xl font-black text-white mt-2">
             {brutSatis.toLocaleString('tr-TR')} ₺
           </div>
-          <p className="text-[10px] text-gray-400 mt-1">Siparişlerden oluşan toplam ciro</p>
+          <p className="text-[10px] text-gray-400 mt-1">İptal hariç geçerli siparişlerin toplamı</p>
         </div>
 
         {/* Platform Komisyonu */}
         <div className="p-4 rounded-2xl bg-[#1D0A20] border border-[#3E1646]">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-300">Platform Hizmet Bedeli (%10)</span>
+            <span className="text-xs font-semibold text-gray-300">
+              Platform Hizmet Bedeli {gosterilenOran > 0 ? `(%${gosterilenOran})` : ''}
+            </span>
             <div className="w-8 h-8 rounded-xl bg-purple-900/40 text-purple-300 flex items-center justify-center">
               <Percent className="w-4 h-4" />
             </div>
@@ -167,10 +274,8 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
 
       {/* İki Kolonlu Alt Düzen: Sol = Para Çekme & IBAN, Sağ = Çekim Geçmişi */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        
         {/* Sol Alan: IBAN & Çekim Talebi Formu (5 Kolon) */}
         <div className="lg:col-span-5 space-y-4">
-          
           {/* Kayıtlı Banka & IBAN Kartı */}
           <div className="p-4 rounded-2xl bg-[#1D0A20] border border-[#3E1646] space-y-3">
             <div className="flex items-center justify-between">
@@ -180,12 +285,22 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIbanDuzenlemeModu(!ibanDuzenlemeModu)}
+                onClick={() => {
+                  setIbanDuzenlemeModu(!ibanDuzenlemeModu);
+                  setHataMesaji('');
+                }}
                 className="text-[11px] text-amber-400 hover:underline font-bold cursor-pointer"
               >
-                {ibanDuzenlemeModu ? 'Tamam' : 'Değiştir'}
+                {ibanDuzenlemeModu ? 'Vazgeç' : iban ? 'Değiştir' : 'IBAN Ekle'}
               </button>
             </div>
+
+            {ibanMesaji && (
+              <div className="p-2 rounded-xl bg-emerald-950/80 border border-emerald-600 text-emerald-200 text-[11px] flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>{ibanMesaji}</span>
+              </div>
+            )}
 
             {ibanDuzenlemeModu ? (
               <div className="space-y-2.5 pt-1 text-xs">
@@ -195,6 +310,7 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
                     type="text"
                     value={hesapSahibi}
                     onChange={(e) => setHesapSahibi(e.target.value)}
+                    placeholder="Örn: Fatma Yılmaz"
                     className="w-full bg-[#120614] border border-purple-900 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-400"
                   />
                 </div>
@@ -213,36 +329,58 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
                     <label className="text-gray-400 block text-[10px] mb-1">Şube / İl</label>
                     <input
                       type="text"
-                      defaultValue="Afyonkarahisar Merkez"
+                      value={subeIl}
+                      onChange={(e) => setSubeIl(e.target.value)}
+                      placeholder="Afyonkarahisar Merkez"
                       className="w-full bg-[#120614] border border-purple-900 rounded-xl px-3 py-2 text-white outline-none focus:border-amber-400"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="text-gray-400 block text-[10px] mb-1">IBAN Numarası</label>
+                  <label className="text-gray-400 block text-[10px] mb-1">IBAN Numarası (26 Hane)</label>
                   <input
                     type="text"
                     value={iban}
-                    onChange={(e) => setIban(e.target.value)}
-                    placeholder="TR00 0000 0000..."
+                    onChange={(e) => setIban(e.target.value.toUpperCase())}
+                    placeholder="TR00 0000 0000 0000 0000 0000 00"
                     className="w-full bg-[#120614] border border-purple-900 rounded-xl px-3 py-2 font-mono text-amber-300 font-bold outline-none focus:border-amber-400"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={bankaBilgileriniKaydet}
+                  disabled={ibanKaydediliyor}
+                  className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {ibanKaydediliyor ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Banka & IBAN Bilgilerini Kaydet</span>
+                </button>
               </div>
-            ) : (
+            ) : iban ? (
               <div className="p-3 rounded-xl bg-[#140616] border border-purple-900/50 space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-400">Hesap Sahibi:</span>
-                  <span className="font-bold text-white">{hesapSahibi}</span>
+                  <span className="font-bold text-white">{hesapSahibi || '-'}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-400">Banka:</span>
-                  <span className="font-semibold text-purple-200">{bankaAdi}</span>
+                  <span className="text-gray-400">Banka / Şube:</span>
+                  <span className="font-semibold text-purple-200">{bankaAdi || '-'} ({subeIl})</span>
                 </div>
-                <div className="pt-1 border-t border-purple-900/40 flex items-center justify-between text-xs">
-                  <span className="text-gray-400">IBAN:</span>
-                  <span className="font-mono text-amber-400 font-bold tracking-wider">{iban}</span>
+                <div className="pt-1 border-t border-purple-900/40 flex items-center justify-between text-xs gap-2">
+                  <span className="text-gray-400 shrink-0">IBAN:</span>
+                  <span className="font-mono text-amber-400 font-bold tracking-wider truncate">{iban}</span>
                 </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 text-xs text-amber-200 flex items-center justify-between gap-2">
+                <span>Henüz kayıtlı banka / IBAN bilginiz yok.</span>
+                <button
+                  type="button"
+                  onClick={() => setIbanDuzenlemeModu(true)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 text-purple-950 font-bold text-[11px] cursor-pointer shrink-0"
+                >
+                  Ekle
+                </button>
               </div>
             )}
           </div>
@@ -276,7 +414,8 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
                 <button
                   type="button"
                   onClick={() => setCekimTutari(cekilebilirNetBakiye)}
-                  className="text-[10px] text-amber-400 font-bold hover:underline cursor-pointer"
+                  disabled={cekilebilirNetBakiye <= 0}
+                  className="text-[10px] text-amber-400 font-bold hover:underline cursor-pointer disabled:opacity-40"
                 >
                   Tüm Bakiyeyi Çek ({cekilebilirNetBakiye} ₺)
                 </button>
@@ -301,9 +440,9 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
             <button
               type="submit"
               disabled={cekilebilirNetBakiye < 500}
-              className={`w-full py-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg ${
+              className={`w-full py-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all shadow-lg ${
                 cekilebilirNetBakiye >= 500
-                  ? 'bg-amber-500 hover:bg-amber-400 text-purple-950 shadow-amber-500/20'
+                  ? 'bg-amber-500 hover:bg-amber-400 text-purple-950 shadow-amber-500/20 cursor-pointer'
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
               }`}
             >
@@ -385,7 +524,6 @@ export const MutfakCuzdanSekmesi: React.FC<MutfakCuzdanSekmesiProps> = ({
             )}
           </div>
         </div>
-
       </div>
     </div>
   );

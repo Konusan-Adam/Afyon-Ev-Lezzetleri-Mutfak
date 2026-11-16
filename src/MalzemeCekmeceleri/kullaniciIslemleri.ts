@@ -101,7 +101,7 @@ export async function veritabaninaKullaniciKaydet(
           min_siparis_tutari: 100,
           teslimat_ucreti: 25,
           puan: 5.0,
-          gorsel_url: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=600&q=80',
+          gorsel_url: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
           sahip_id: kimlikId,
           onayli_mi: false, // Patron onayı bekliyor!
           onay_durumu: 'beklemede',

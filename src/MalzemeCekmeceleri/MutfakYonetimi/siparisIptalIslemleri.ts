@@ -1,5 +1,5 @@
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
-import { belgeKaydet, koleksiyonGetir } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import { belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
 import { yerelSiparisDurumGuncelle } from '@/src/MalzemeCekmeceleri/useMusteriSiparisleri';
 
@@ -17,8 +17,11 @@ export async function siparisIptalEt(siparisKimligi: string, gerekceBaslik: stri
       await belgeKaydet('siparisler', siparisKimligi, {
         durum: 'iptal',
         asama: 'iptal',
+        durum_aciklamasi: aciklamaMetni,
         durumAciklamasi: aciklamaMetni,
-        sonGuncelleme: new Date().toLocaleTimeString('tr-TR')
+        iptal_gerekcesi: gerekceBaslik,
+        sonGuncelleme: new Date().toLocaleTimeString('tr-TR'),
+        guncellenme_zamani: new Date().toISOString()
       });
     } catch (hata) {
       console.warn('Firebase sipariş iptal güncelleme hatası:', hata);

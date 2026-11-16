@@ -62,7 +62,7 @@ export async function mutfakSiparisDurumuGuncelle(
       };
 
       const tumFbSiparisler = await koleksiyonGetir<any>('siparisler');
-      let guncellenenVarMi = false;
+      const eslesenDocIdler: string[] = [];
 
       if (tumFbSiparisler && Array.isArray(tumFbSiparisler)) {
         for (const fbDoc of tumFbSiparisler) {
@@ -76,21 +76,28 @@ export async function mutfakSiparisDurumuGuncelle(
 
           if (eslesiyorMu && docId) {
             await belgeKaydet('siparisler', docId, guncellenecekVeri);
-            guncellenenVarMi = true;
+            eslesenDocIdler.push(docId);
           }
         }
       }
 
-      if (!guncellenenVarMi && siparisId) {
+      if (eslesenDocIdler.length === 0 && siparisId) {
         await belgeKaydet('siparisler', siparisId, guncellenecekVeri);
+        eslesenDocIdler.push(siparisId);
       }
 
       // 4. Sipariş Tamamlandıysa Taşı
       if (yeniDurum === 'teslim_edildi') {
-        const tamSiparis = await belgeGetir<any>('siparisler', siparisId);
-        if (tamSiparis) {
-          await belgeKaydet('tamamlanan_siparisler', siparisId, { ...tamSiparis, ...guncellenecekVeri });
-          await belgeSil('siparisler', siparisId);
+        for (const hedefId of eslesenDocIdler) {
+          const tamSiparis = await belgeGetir<any>('siparisler', hedefId);
+          if (tamSiparis) {
+            await belgeKaydet('tamamlanan_siparisler', hedefId, {
+              ...tamSiparis,
+              ...guncellenecekVeri,
+              tamamlanma_tarihi: new Date().toISOString()
+            });
+            await belgeSil('siparisler', hedefId);
+          }
         }
       }
 

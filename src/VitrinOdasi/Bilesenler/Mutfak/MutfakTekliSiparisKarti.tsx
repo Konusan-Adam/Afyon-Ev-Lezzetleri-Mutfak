@@ -32,14 +32,14 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
   const siparisKodu = siparis.siparis_kodu || siparis.siparisKodu || siparis.id?.substring(0, 8);
   const musteriAdi = siparis.musteri_adi || siparis.musteriAdi || 'Değerli Misafir';
   const telefon = siparis.musteri_telefon || siparis.telefon || '';
-  const adres = siparis.teslimat_adresi || siparis.adres || 'Afyonkarahisar Merkez';
+  const adres = siparis.teslimat_adresi || siparis.teslimat_adresi_metni || siparis.adres || 'Afyonkarahisar Merkez';
   const teslimatTipi = siparis.teslimat_tipi || siparis.teslimatTipi || 'adrese_teslimat';
   const toplamTutar = Number(siparis.toplam_tutar || siparis.toplamTutar || siparis.tutar || 0);
   const durum = siparis.durum || 'beklemede';
-  const siparisNotu = siparis.not || siparis.siparis_notu || siparis.ozelNot;
+  const siparisNotu = siparis.not || siparis.siparis_notu || siparis.adresNotu || siparis.ozelNot;
 
-  // Sepet / Yemek öğeleri
-  const urunler: any[] = siparis.urunler || siparis.ogeler || siparis.sepet || [];
+  // Sepet / Yemek öğeleri (elemanlar & urunler uyumlu)
+  const urunler: any[] = siparis.urunler || siparis.elemanlar || siparis.siparis_elemanlari || siparis.ogeler || siparis.sepet || [];
 
   const handleDurumGuncelle = async (
     yeniDurum: 'beklemede' | 'hazirlaniyor' | 'paketlendi' | 'yolda' | 'teslim_edildi',
@@ -122,7 +122,7 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+          <div className="flex items-center gap-3 text-xs text-gray-400 mt-1 flex-wrap">
             {telefon && (
               <span className="flex items-center gap-1 text-purple-300">
                 <Phone className="w-3 h-3" /> {telefon}
@@ -153,9 +153,9 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
           <p className="text-xs text-gray-400 italic">Yöresel Afyon Ev Menüsü siparişi</p>
         ) : (
           urunler.map((urun, index) => {
-            const ad = urun.baslik || urun.ad || urun.yemek_baslik || 'Özel Sipariş';
-            const adet = urun.adet || urun.miktar || 1;
-            const fiyat = Number(urun.fiyat || urun.birim_fiyat || 0);
+            const ad = urun.baslik || urun.ad || urun.yemek_baslik || urun.yemek?.baslik || 'Özel Sipariş';
+            const adet = Number(urun.adet || urun.miktar || 1);
+            const fiyat = Number(urun.fiyat ?? urun.birim_fiyat ?? urun.yemek?.fiyat ?? 0);
             const secenekler = Array.isArray(urun.secilen_ogeler) 
               ? urun.secilen_ogeler.map((s: any) => s.baslik).join(', ')
               : urun.varyasyon || '';
@@ -177,8 +177,19 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
       </div>
 
       {/* Butonlar & Durum Aksiyonları */}
-      <div className="pt-2 flex items-center justify-between gap-2 flex-wrap border-t border-purple-900/30">
-        {durum !== 'iptal' && durum !== 'teslim_edildi' && (
+      {(durum === 'iptal' || durum === 'teslim_edildi') ? (
+        (siparis.durum_aciklamasi || siparis.durumAciklamasi || siparis.tamamlanma_tarihi) && (
+          <div className="pt-2 flex items-center justify-between gap-2 text-[11px] text-gray-400 border-t border-purple-900/30">
+            <span>{siparis.durum_aciklamasi || siparis.durumAciklamasi || 'İşlem tamamlandı.'}</span>
+            {siparis.tamamlanma_tarihi && (
+              <span className="text-emerald-400/80 font-medium shrink-0">
+                {new Date(siparis.tamamlanma_tarihi).toLocaleString('tr-TR')}
+              </span>
+            )}
+          </div>
+        )
+      ) : (
+        <div className="pt-2 flex items-center justify-between gap-2 flex-wrap border-t border-purple-900/30">
           <button
             onClick={() => onIptalAc({ id: siparisId, kodu: siparisKodu })}
             disabled={islemde}
@@ -186,67 +197,67 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
           >
             İptal Et
           </button>
-        )}
 
-        <div className="flex items-center gap-2 ml-auto">
-          {durum === 'beklemede' && (
-            <div className="flex items-center gap-1.5">
-              <select
-                value={secilenSure}
-                onChange={(e) => setSecilenSure(Number(e.target.value))}
-                className="px-2 py-1.5 rounded-xl bg-[#120617] border border-purple-800 text-purple-200 text-xs focus:outline-none"
-              >
-                <option value={15}>15 dk</option>
-                <option value={25}>25 dk</option>
-                <option value={35}>35 dk</option>
-                <option value={45}>45 dk</option>
-                <option value={60}>60 dk</option>
-              </select>
+          <div className="flex items-center gap-2 ml-auto">
+            {durum === 'beklemede' && (
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={secilenSure}
+                  onChange={(e) => setSecilenSure(Number(e.target.value))}
+                  className="px-2 py-1.5 rounded-xl bg-[#120617] border border-purple-800 text-purple-200 text-xs focus:outline-none"
+                >
+                  <option value={15}>15 dk</option>
+                  <option value={25}>25 dk</option>
+                  <option value={35}>35 dk</option>
+                  <option value={45}>45 dk</option>
+                  <option value={60}>60 dk</option>
+                </select>
+                <button
+                  onClick={() => handleDurumGuncelle('hazirlaniyor', secilenSure)}
+                  disabled={islemde}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChefHat className="w-3.5 h-3.5" />}
+                  <span>Onayla & Pişir ({secilenSure} dk)</span>
+                </button>
+              </div>
+            )}
+
+            {durum === 'hazirlaniyor' && (
               <button
-                onClick={() => handleDurumGuncelle('hazirlaniyor', secilenSure)}
+                onClick={() => handleDurumGuncelle('paketlendi', 15)}
                 disabled={islemde}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
               >
-                {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChefHat className="w-3.5 h-3.5" />}
-                <span>Onayla & Pişir ({secilenSure} dk)</span>
+                {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
+                <span>Paketlendi & Kurye Çağır</span>
               </button>
-            </div>
-          )}
+            )}
 
-          {durum === 'hazirlaniyor' && (
-            <button
-              onClick={() => handleDurumGuncelle('paketlendi', 15)}
-              disabled={islemde}
-              className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-            >
-              {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
-              <span>Paketlendi & Kurye Çağır</span>
-            </button>
-          )}
+            {durum === 'paketlendi' && (
+              <button
+                onClick={() => handleDurumGuncelle('yolda', 20)}
+                disabled={islemde}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />}
+                <span>Kuryeye Teslim Edildi</span>
+              </button>
+            )}
 
-          {durum === 'paketlendi' && (
-            <button
-              onClick={() => handleDurumGuncelle('yolda', 20)}
-              disabled={islemde}
-              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-            >
-              {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />}
-              <span>Kuryeye Teslim Edildi</span>
-            </button>
-          )}
-
-          {durum === 'yolda' && (
-            <button
-              onClick={() => handleDurumGuncelle('teslim_edildi', 0)}
-              disabled={islemde}
-              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-            >
-              {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              <span>Teslim Edildi Olarak İşaretle</span>
-            </button>
-          )}
+            {durum === 'yolda' && (
+              <button
+                onClick={() => handleDurumGuncelle('teslim_edildi', 0)}
+                disabled={islemde}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              >
+                {islemde ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                <span>Teslim Edildi Olarak İşaretle</span>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -37,8 +37,8 @@ export const mutfakTeslimZiliCal = (siparisKodu?: string) => {
       : 'Siparişiniz müşteriye ulaştı. Eline sağlık usta!';
     const secenekler: any = {
       body: detay,
-      icon: '/favicon.png',
-      badge: '/favicon.png',
+      icon: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
+      badge: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
       tag: 'afyon-teslim-mutfak',
       renotify: true,
       vibrate: [200, 100, 200]
