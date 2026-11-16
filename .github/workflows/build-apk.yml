@@ -1,0 +1,51 @@
+name: Android APK Otomatik Derleyici
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu Çek
+        uses: actions/checkout@v4
+
+      - name: Node.js Hazırla
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Java 17 Hazırla
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Android SDK Araçlarını Kur
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Bağımlılıkları Kur
+        run: npm ci
+
+      - name: APK Derle ve İmzala
+        run: node android/build-apk.mjs
+
+      - name: APK'yı GitHub Release'e Yükle
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: public/afyon-mutfak.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: APK'yı Yapı Eseri Olarak Sakla
+        uses: actions/upload-artifact@v4
+        with:
+          name: afyon-mutfak-apk
+          path: public/afyon-mutfak.apk

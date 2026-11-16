@@ -42,10 +42,19 @@ async function main() {
   }
 
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const versionName = String(pkg.version || '1.0.0').replace(/^v/, '');
+  const versionName = String(pkg.version || '2.0.0').replace(/^v/, '');
   const parts = versionName.split('.').map((n) => parseInt(n, 10) || 0);
   const versionCode = (parts[0] || 1) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
   console.log(`📦 APK Sürümü: v${versionName} (versionCode: ${versionCode})`);
+
+  // Anlık APK yapım zaman damgası ve sürüm meta dosyasını kaydet
+  const metaVerisi = {
+    version: versionName,
+    versionCode: versionCode,
+    builtAt: new Date().toISOString(),
+    builtTimestamp: Date.now(),
+  };
+  fs.writeFileSync(path.join(ROOT, 'public', 'apk-meta.json'), JSON.stringify(metaVerisi, null, 2));
 
   // 1. Web uygulamasını derle
   run('npx vite build');

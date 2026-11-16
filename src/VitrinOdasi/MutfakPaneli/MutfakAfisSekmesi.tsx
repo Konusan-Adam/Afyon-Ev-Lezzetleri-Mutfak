@@ -12,7 +12,12 @@ import {
   Loader2,
   Power,
   AlertTriangle,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MoveVertical,
+  Check,
+  X,
+  Sliders,
+  RotateCcw,
 } from 'lucide-react';
 import { useMutfakAfisi } from '@/src/MalzemeCekmeceleri/Mutfak/useMutfakAfisi';
 import { sunucuyaGorselYukle, gorselUrlGuvenliYap } from '@/src/MalzemeCekmeceleri/sunucuGorselYukleyici';
@@ -34,13 +39,20 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
   mutfakId,
   mutfakAdi,
 }) => {
-  const { afis, yukleniyor, islemde, afisKaydet, afisDurumDegistir, afisKaldir } = useMutfakAfisi(mutfakId, mutfakAdi);
+  const { afis, yukleniyor, islemde, afisKaydet, konumKaydet, afisDurumDegistir, afisKaldir } = useMutfakAfisi(mutfakId, mutfakAdi);
 
   const [rozet, setRozet] = useState('EV MUTFAĞI ÖZEL');
   const [baslik, setBaslik] = useState('');
   const [aciklama, setAciklama] = useState('');
   const [gorselUrl, setGorselUrl] = useState('');
   const [aktifMi, setAktifMi] = useState(true);
+
+  // Facebook tarzı dikey odak konumu (0: En Üst, 50: Orta, 100: En Alt)
+  const [konumY, setKonumY] = useState(50);
+  const [orijinalKonumY, setOrijinalKonumY] = useState(50);
+  const [konumlandirmaModu, setKonumlandirmaModu] = useState(false);
+  const [surukleniyor, setSurukleniyor] = useState(false);
+  const [onizlemeMetinleriniGizle, setOnizlemeMetinleriniGizle] = useState(false);
 
   const [gorselModu, setGorselModu] = useState<'dosya' | 'url'>('dosya');
   const [urlGirdisi, setUrlGirdisi] = useState('');
@@ -50,6 +62,8 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
   const [hataMesaji, setHataMesaji] = useState<string | null>(null);
 
   const dosyaInputRef = useRef<HTMLInputElement>(null);
+  const onizlemeKonteynerRef = useRef<HTMLDivElement>(null);
+  const suruklemeBaslangicRef = useRef<{ y: number; baslangicKonumY: number; containerYukseklik: number } | null>(null);
 
   useEffect(() => {
     if (afis) {
@@ -57,6 +71,9 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
       setBaslik(afis.baslik || '');
       setAciklama(afis.aciklama || '');
       setGorselUrl(afis.gorsel_url || '');
+      const y = Number.isFinite(afis.konum_y) ? Math.min(100, Math.max(0, Math.round(afis.konum_y!))) : 50;
+      setKonumY(y);
+      setOrijinalKonumY(y);
       setAktifMi(afis.aktif_mi !== false);
     }
   }, [afis]);
@@ -93,6 +110,67 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
     setGorselUrl(temiz);
   };
 
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!konumlandirmaModu) return;
+    if ((e.target as HTMLElement).closest('button, input, a')) return;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    const rect = onizlemeKonteynerRef.current?.getBoundingClientRect();
+    suruklemeBaslangicRef.current = {
+      y: e.clientY,
+      baslangicKonumY: konumY,
+      containerYukseklik: rect?.height || 260,
+    };
+    setSurukleniyor(true);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!surukleniyor || !suruklemeBaslangicRef.current) return;
+    const { y, baslangicKonumY, containerYukseklik } = suruklemeBaslangicRef.current;
+    const deltaY = e.clientY - y;
+    // Facebook mantığı: Görsel aşağı çekilirse üst taraf görünür (konum_y azalır),
+    // yukarı itilirse alt taraf görünür (konum_y artar).
+    const deltaYuzde = (deltaY / Math.max(containerYukseklik, 120)) * 100;
+    const yeniY = Math.min(100, Math.max(0, Math.round(baslangicKonumY - deltaYuzde)));
+    setKonumY(yeniY);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (surukleniyor) {
+      setSurukleniyor(false);
+      suruklemeBaslangicRef.current = null;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  const konumlandirmayiKaydet = async () => {
+    if (afis) {
+      const ok = await konumKaydet(konumY);
+      if (ok) {
+        setOrijinalKonumY(konumY);
+        setKonumlandirmaModu(false);
+        setBasariMesaji(`Afiş dikey odak konumu (%${konumY}) başarıyla güncellendi.`);
+        setTimeout(() => setBasariMesaji(null), 3500);
+      } else {
+        setHataMesaji('Afiş konumu kaydedilemedi.');
+      }
+    } else {
+      setOrijinalKonumY(konumY);
+      setKonumlandirmaModu(false);
+      setBasariMesaji(`Dikey odak konumu ayarlandı (%${konumY}). Afişi kaydetmek için formu onaylayınız.`);
+      setTimeout(() => setBasariMesaji(null), 3500);
+    }
+  };
+
+  const konumlandirmadanVazgec = () => {
+    setKonumY(orijinalKonumY);
+    setKonumlandirmaModu(false);
+    setSurukleniyor(false);
+  };
+
   const handleKaydet = async (e: React.FormEvent) => {
     e.preventDefault();
     setHataMesaji(null);
@@ -120,10 +198,13 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
       baslik,
       aciklama,
       gorsel_url: gorselUrl,
+      konum_y: konumY,
       aktif_mi: aktifMi,
     });
 
     if (ok) {
+      setOrijinalKonumY(konumY);
+      setKonumlandirmaModu(false);
       setBasariMesaji('Mutfak afişiniz kaydedildi ve Patron onayına gönderildi.');
       setTimeout(() => setBasariMesaji(null), 4000);
     } else {
@@ -140,6 +221,9 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
       setAciklama('');
       setGorselUrl('');
       setUrlGirdisi('');
+      setKonumY(50);
+      setOrijinalKonumY(50);
+      setKonumlandirmaModu(false);
       setAktifMi(true);
       setBasariMesaji('Mutfak afişiniz kaldırıldı.');
       setTimeout(() => setBasariMesaji(null), 3000);
@@ -438,20 +522,50 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
         {/* Sağ Kolon: Canlı Vitrin Önizlemesi (5 Kolon) */}
         <div className="lg:col-span-5 space-y-3">
           <div className="p-4 rounded-2xl bg-[#180A1F] border border-[#3E1646] space-y-3 shadow-lg">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                 <Eye className="w-4 h-4" />
                 <span>Canlı Vitrin Afiş Önizlemesi</span>
               </div>
-              <span className="text-[10px] text-gray-400">Müşteri Görünümü</span>
+              {gorselUrl && !konumlandirmaModu && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrijinalKonumY(konumY);
+                    setKonumlandirmaModu(true);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-purple-900/90 hover:bg-purple-800 text-amber-300 border border-amber-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
+                  title="Afişin yukarı-aşağı dikey odak noktasını ayarla"
+                >
+                  <MoveVertical className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Kapağı Yeniden Konumlandır</span>
+                  <span className="text-[10px] text-purple-200 bg-purple-950/80 px-1 py-0.2 rounded font-mono font-bold">
+                    %{konumY}
+                  </span>
+                </button>
+              )}
             </div>
 
-            <div className="relative rounded-2xl overflow-hidden border border-amber-500/40 bg-[#120415] min-h-[240px] flex flex-col justify-end">
+            {/* Önizleme Konteyneri - Facebook Tarzı Yukarı/Aşağı Sürükleme */}
+            <div
+              ref={onizlemeKonteynerRef}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className={`relative rounded-2xl overflow-hidden border transition-all ${
+                konumlandirmaModu
+                  ? 'border-2 border-amber-400 ring-2 ring-amber-400/40 shadow-xl shadow-amber-500/20 cursor-ns-resize select-none touch-none'
+                  : 'border-amber-500/40'
+              } bg-[#120415] min-h-[260px] flex flex-col justify-end select-none`}
+            >
               {gorselUrl ? (
                 <img
                   src={gorselUrlGuvenliYap(gorselUrl)}
                   alt="Mutfak Afiş Önizleme"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  draggable={false}
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-[object-position] duration-75"
+                  style={{ objectPosition: `center ${konumY}%` }}
                 />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-purple-400/50 gap-2 p-4 text-center">
@@ -460,7 +574,52 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
                 </div>
               )}
 
-              <div className="relative z-10 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-5 pt-14 space-y-2">
+              {/* Konumlandırma Modu Üst Çubuğu (Facebook Tarzı) */}
+              {konumlandirmaModu && (
+                <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between gap-2 p-2 rounded-xl bg-black/85 backdrop-blur-md border border-amber-500/60 shadow-lg">
+                  <div className="flex items-center gap-1.5 text-amber-300 text-xs font-extrabold animate-pulse">
+                    <MoveVertical className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="hidden sm:inline">Kapağı yukarı-aşağı sürükleyin</span>
+                    <span className="sm:hidden">Sürükleyin</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={konumlandirmadanVazgec}
+                      className="px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Vazgeç</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={konumlandirmayiKaydet}
+                      disabled={islemde}
+                      className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-gray-950 text-[11px] font-black flex items-center gap-1 shadow-md cursor-pointer transition-all disabled:opacity-50"
+                    >
+                      {islemde ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      <span>Konumu Kaydet</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Sürükleme İpucu Rozeti (Sürükleme modundayken) */}
+              {konumlandirmaModu && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                  <div className="px-3.5 py-1.5 rounded-full bg-black/75 backdrop-blur-md border border-amber-400/60 text-white text-xs font-black flex items-center gap-2 shadow-2xl">
+                    <MoveVertical className="w-4 h-4 text-amber-400 animate-bounce" />
+                    <span>Dikey Odak: %{konumY}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Metin Katmanı (Vitrin Görünümü) */}
+              <div
+                className={`relative z-10 bg-gradient-to-t from-black/95 via-black/75 to-transparent p-5 pt-14 space-y-2 transition-opacity duration-200 ${
+                  konumlandirmaModu && onizlemeMetinleriniGizle ? 'opacity-10' : 'opacity-100'
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-purple-950 font-black text-[10px] tracking-wider uppercase">
                     {rozet || 'EV MUTFAĞI ÖZEL'}
@@ -478,16 +637,116 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
                   {aciklama || 'Mutfağınızın özel lezzetini veya günlük fırsatını anlatan kısa slogan.'}
                 </p>
 
-                <div className="pt-1">
+                <div className="pt-1 flex items-center justify-between">
                   <span className="inline-flex items-center px-3 py-1.5 rounded-xl bg-[#6D237A] text-white text-[11px] font-bold border border-purple-400/30">
                     Mutfağı İncele →
                   </span>
+
+                  {konumlandirmaModu && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOnizlemeMetinleriniGizle(!onizlemeMetinleriniGizle);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-black/70 hover:bg-black/90 text-purple-200 hover:text-white border border-purple-800 text-[10px] font-semibold cursor-pointer"
+                    >
+                      {onizlemeMetinleriniGizle ? 'Yazıları Göster' : 'Yazıları Gizle'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
+            {/* Konumlandırma Modu Aktifken: Hassas Slider & Hazır Konumlar Paneli */}
+            {konumlandirmaModu ? (
+              <div className="p-3.5 rounded-2xl bg-[#140517] border border-amber-500/50 space-y-3 shadow-inner animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <Sliders className="w-4 h-4" />
+                    <span>Hassas Dikey Odak Ayarı (%{konumY})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKonumY(50)}
+                    className="text-[10px] text-gray-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Ortala (%50)</span>
+                  </button>
+                </div>
+
+                {/* Dikey Odak Slider */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px] text-gray-400 font-medium">
+                    <span>0% (En Üst Odak)</span>
+                    <span className="text-amber-400 font-bold font-mono">%{konumY}</span>
+                    <span>100% (En Alt Odak)</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={konumY}
+                    onChange={(e) => setKonumY(Number(e.target.value))}
+                    className="w-full h-2.5 bg-[#25082C] rounded-lg appearance-none cursor-pointer accent-amber-500 border border-purple-800/60"
+                  />
+                </div>
+
+                {/* Hızlı Hazır Konumlar */}
+                <div className="flex items-center justify-between gap-1.5 pt-1 flex-wrap">
+                  <span className="text-[10px] text-gray-400 font-semibold shrink-0">Hızlı Konum:</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[
+                      { etiket: 'Üst (%15)', val: 15 },
+                      { etiket: 'Orta (%50)', val: 50 },
+                      { etiket: 'Alt (%85)', val: 85 },
+                    ].map((p) => (
+                      <button
+                        key={p.val}
+                        type="button"
+                        onClick={() => setKonumY(p.val)}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer transition-all ${
+                          konumY === p.val
+                            ? 'bg-amber-500 text-purple-950 border-amber-400'
+                            : 'bg-[#1D0823] text-gray-300 border-purple-900/60 hover:text-white'
+                        }`}
+                      >
+                        {p.etiket}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Normal Mod: Dikey Odak Bilgi Çubuğu */
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#120614] border border-purple-900/50 text-[11px]">
+                <div className="flex items-center gap-2 text-gray-300">
+                  <MoveVertical className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Dikey Kapak Odağı:</span>
+                  <span className="font-bold text-amber-300 font-mono">%{konumY}</span>
+                  <span className="text-gray-400 text-[10px]">
+                    ({konumY < 35 ? 'Üst Ağırlıklı' : konumY > 65 ? 'Alt Ağırlıklı' : 'Dengeli/Orta'})
+                  </span>
+                </div>
+                {gorselUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrijinalKonumY(konumY);
+                      setKonumlandirmaModu(true);
+                    }}
+                    className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer text-[10px]"
+                  >
+                    Konumu Ayarla
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-900/40 text-[11px] text-gray-300 leading-relaxed">
-              Her mutfağın yalnızca <strong className="text-amber-300">1 aktif afiş</strong> hakkı vardır. Afişinizi güncellediğinizde kalite kontrolü için yeniden Patron onayına sunulur.
+              Her mutfağın yalnızca <strong className="text-amber-300">1 aktif afiş</strong> hakkı vardır. Facebook tarzı dikey odak ayarı sayesinde afişiniz vitrinde tam istediğiniz noktaya odaklanır.
             </div>
           </div>
         </div>

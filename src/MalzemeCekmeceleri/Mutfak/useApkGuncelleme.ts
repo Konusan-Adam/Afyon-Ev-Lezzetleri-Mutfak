@@ -77,29 +77,63 @@ export function useApkGuncelleme(): ApkGuncellemeDurumu {
 
         const tag = String(release.tag_name).trim();
         const temizYeni = tag.replace(/^v/i, '');
+        const releaseId = String(release.id || '');
+        const releaseZamani = release.published_at ? new Date(release.published_at).getTime() : 0;
 
-        if (surumKarsilastir(temizYeni, kurulu) > 0) {
-          const assets = Array.isArray(release.assets) ? release.assets : [];
-          const apkAsset = assets.find(
-            (a: any) =>
-              typeof a?.name === 'string' &&
-              a.name.toLowerCase().endsWith('.apk') &&
-              a.browser_download_url
-          );
-
-          const url =
-            apkAsset?.browser_download_url ||
-            `https://raw.githubusercontent.com/${GITHUB_REPO}/${encodeURIComponent(tag)}/public/afyon-mutfak.apk`;
-
-          setYeniSurum(temizYeni);
-          setSurumNotu(
-            typeof release.body === 'string' && release.body.trim()
-              ? release.body.trim().slice(0, 180)
-              : 'Yeni mutfak iyileştirmeleri ve hata düzeltmeleri hazır.'
-          );
-          setIndirmeUrl(url);
-          setGuncellemeVar(true);
+        // 1. Bu cihazda bu release zaten kurulmuşsa tekrar gösterme
+        const sonKurulanId = localStorage.getItem('afyon_kurulan_release_id');
+        const sonKurulanTag = localStorage.getItem('afyon_kurulan_release_tag');
+        if (sonKurulanId === releaseId || (sonKurulanTag && sonKurulanTag === tag)) {
+          return;
         }
+
+        // 2. APK'nın kendi derleme zamanını çek
+        let yapimZamani = 0;
+        try {
+          const metaRes = await fetch('/apk-meta.json', { cache: 'no-store' });
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            if (meta?.builtTimestamp) yapimZamani = Number(meta.builtTimestamp);
+          }
+        } catch {}
+
+        // Eğer telefonun içindeki APK bu GitHub Release'inden sonra/aynı anda üretilmişse
+        // uygulama zaten bu güncellemeyi içeriyordur, uyarı verme!
+        if (yapimZamani > 0 && releaseZamani > 0 && yapimZamani >= releaseZamani) {
+          return;
+        }
+
+        const surumFarki = surumKarsilastir(temizYeni, kurulu);
+        // Hem sürüm numarası büyük değilse hem de yapım tarihi yeniyse bildirme
+        if (surumFarki <= 0 && yapimZamani >= releaseZamani) {
+          return;
+        }
+
+        // Eğer kurulu sürüm ile aynı sürümse gösterme
+        if (surumFarki === 0) {
+          return;
+        }
+
+        const assets = Array.isArray(release.assets) ? release.assets : [];
+        const apkAsset = assets.find(
+          (a: any) =>
+            typeof a?.name === 'string' &&
+            a.name.toLowerCase().endsWith('.apk') &&
+            a.browser_download_url
+        );
+
+        const url =
+          apkAsset?.browser_download_url ||
+          `https://raw.githubusercontent.com/${GITHUB_REPO}/${encodeURIComponent(tag)}/public/afyon-mutfak.apk`;
+
+        setYeniSurum(temizYeni);
+        setSurumNotu(
+          typeof release.body === 'string' && release.body.trim()
+            ? release.body.trim().slice(0, 180)
+            : 'Yeni mutfak iyileştirmeleri ve hata düzeltmeleri hazır.'
+        );
+        setIndirmeUrl(url);
+        setGuncellemeVar(true);
       } catch {
         // Ağ yok veya henüz release yayınlanmadı
       }
@@ -142,12 +176,18 @@ export function useApkGuncelleme(): ApkGuncellemeDurumu {
     setIndiriliyor(true);
     setYuzde(0);
     setDurumMesaji('Güncelleme başlatılıyor...');
+
+    // Bu sürümün kurulduğunu hafızaya al
+    if (yeniSurum) {
+      localStorage.setItem('afyon_kurulan_release_tag', yeniSurum);
+    }
+
     const tetiklendi = androidApkGuncelle(indirmeUrl);
     if (!tetiklendi) {
       setIndiriliyor(false);
       window.location.href = indirmeUrl;
     }
-  }, [indirmeUrl]);
+  }, [indirmeUrl, yeniSurum]);
 
   const kapat = useCallback(() => {
     if (indiriliyor) return;

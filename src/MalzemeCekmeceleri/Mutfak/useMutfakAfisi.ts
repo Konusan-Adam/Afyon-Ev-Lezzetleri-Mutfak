@@ -15,6 +15,7 @@ export interface MutfakAfisVerisi {
   baslik: string;
   aciklama: string;
   gorsel_url: string;
+  konum_y?: number; // 0 (en üst) - 100 (en alt) arası dikey odak yüzdesi, varsayılan 50
   aktif_mi: boolean;
   onay_durumu: 'beklemede' | 'onaylandi' | 'reddedildi';
   onayli_mi: boolean;
@@ -69,12 +70,16 @@ export function useMutfakAfisi(mutfakId: string, mutfakAdi: string) {
     aciklama: string;
     gorsel_url: string;
     aktif_mi: boolean;
+    konum_y?: number;
   }): Promise<boolean> => {
     if (!mutfakId) return false;
     setIslemde(true);
 
     const belgeId = afis?.id || `afis_${mutfakId}`;
     const simdi = new Date().toISOString();
+    const konumYDegeri = Number.isFinite(girdi.konum_y)
+      ? Math.min(100, Math.max(0, Math.round(girdi.konum_y!)))
+      : (afis?.konum_y ?? 50);
 
     const yeniKayit: MutfakAfisVerisi = {
       id: belgeId,
@@ -84,6 +89,7 @@ export function useMutfakAfisi(mutfakId: string, mutfakAdi: string) {
       baslik: girdi.baslik.trim(),
       aciklama: girdi.aciklama.trim(),
       gorsel_url: girdi.gorsel_url.trim(),
+      konum_y: konumYDegeri,
       aktif_mi: girdi.aktif_mi,
       onay_durumu: 'beklemede',
       onayli_mi: false,
@@ -113,6 +119,32 @@ export function useMutfakAfisi(mutfakId: string, mutfakAdi: string) {
       return true;
     } catch (err) {
       console.warn('Mutfak afiş kaydetme hatası:', err);
+      return false;
+    } finally {
+      setIslemde(false);
+    }
+  };
+
+  const konumKaydet = async (yeniKonumY: number): Promise<boolean> => {
+    if (!afis || !mutfakId) return false;
+    setIslemde(true);
+    const yuvarlanmis = Math.min(100, Math.max(0, Math.round(yeniKonumY)));
+    const guncel: MutfakAfisVerisi = {
+      ...afis,
+      konum_y: yuvarlanmis,
+      guncellenme_tarihi: new Date().toISOString(),
+    };
+
+    try {
+      localStorage.setItem(`mutfak_afis_${mutfakId}`, JSON.stringify(guncel));
+      if (canliFirebaseAktifMi()) {
+        const basarili = await belgeKaydet('mutfak_afisleri', afis.id, guncel);
+        if (!basarili) return false;
+      }
+      setAfis(guncel);
+      return true;
+    } catch (err) {
+      console.warn('Mutfak afiş konumu kaydetme hatası:', err);
       return false;
     } finally {
       setIslemde(false);
@@ -164,6 +196,7 @@ export function useMutfakAfisi(mutfakId: string, mutfakAdi: string) {
     yukleniyor,
     islemde,
     afisKaydet,
+    konumKaydet,
     afisDurumDegistir,
     afisKaldir,
   };
