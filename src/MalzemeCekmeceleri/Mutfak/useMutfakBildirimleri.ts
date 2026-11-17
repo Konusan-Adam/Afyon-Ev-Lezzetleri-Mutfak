@@ -5,11 +5,21 @@ import { mutfakZiliCal, mutfakZiliDurdur } from './MutfakZilServisi';
 import { androidZilSustur } from './AndroidKopruServisi';
 import { mutfakTeslimZiliCal } from '@/src/MalzemeCekmeceleri/MutfakTeslimZili';
 import { sekmeAlarmiDurdur } from '@/src/MalzemeCekmeceleri/SekmeAlarmi';
+import { mutfakSesliAnonsYap } from './MutfakSesliAsistanServisi';
 
 export interface YeniSiparisBildirimi {
   id: string;
   siparisKodu: string;
   musteriAdi: string;
+  toplamTutar: number;
+  zaman: string;
+}
+
+export interface IptalSiparisBildirimi {
+  id: string;
+  siparisKodu: string;
+  musteriAdi: string;
+  gerekce: string;
   toplamTutar: number;
   zaman: string;
 }
@@ -29,8 +39,12 @@ export function useMutfakBildirimleri(
   const ekKimliklerAnahtari = (secenekler?.ekMutfakKimlikleri || []).filter(Boolean).join('|');
 
   const [yeniSiparisUyarisi, setYeniSiparisUyarisi] = useState<YeniSiparisBildirimi | null>(null);
+  const [iptalSiparisUyarisi, setIptalSiparisUyarisi] = useState<IptalSiparisBildirimi | null>(null);
+
   const bilinenSiparisIdleri = useRef<Set<string>>(new Set());
+  const bilinenSiparisDurumlari = useRef<Map<string, string>>(new Map());
   const bilinenTeslimEdilenler = useRef<Set<string>>(new Set());
+  const bilinenIptalEdilenler = useRef<Set<string>>(new Set());
   const ilkYukleme = useRef<boolean>(true);
   const tekrarZiliRef = useRef<any>(null);
   const aktifUyariSiparisIdRef = useRef<string | null>(null);
@@ -47,12 +61,21 @@ export function useMutfakBildirimleri(
     setYeniSiparisUyarisi(null);
   };
 
+  const iptalUyarisiKapat = () => {
+    setIptalSiparisUyarisi(null);
+    mutfakZiliDurdur();
+    sekmeAlarmiDurdur();
+    androidZilSustur();
+  };
+
   useEffect(() => {
-    // Mutfak değiştiğinde veya giriş yapıldığında dinleme durumunu sıfırla
     bilinenSiparisIdleri.current = new Set();
+    bilinenSiparisDurumlari.current = new Map();
     bilinenTeslimEdilenler.current = new Set();
+    bilinenIptalEdilenler.current = new Set();
     ilkYukleme.current = true;
     uyariKapat();
+    setIptalSiparisUyarisi(null);
 
     if (!aktifMi || !mutfakId) {
       return;
@@ -111,6 +134,36 @@ export function useMutfakBildirimleri(
       }
     };
 
+    const iptalSiparisiBildir = (siparis: any) => {
+      const kod = siparis.siparis_kodu || siparis.siparisKodu || siparis.siparisKimligi || siparis.id || '';
+      const musteri = siparis.musteri_adi || siparis.musteriAdi || 'Müşteri';
+      const gerekce = siparis.iptal_gerekcesi || siparis.durum_aciklamasi || siparis.aciklama || 'Müşteri siparişi iptal etti';
+      const tutar = Number(siparis.toplam_tutar || siparis.toplamTutar || siparis.tutar || 0);
+
+      // Devam eden normal zili sustur
+      uyariKapat();
+
+      // Acil durum iptal zili çal
+      mutfakZiliCal(
+        'SİPARİŞ İPTAL EDİLDİ! 🛑',
+        `#${kod} nolu sipariş müşteri/patron tarafından iptal edildi! Pişirmeyi durdurun.`,
+        { sureSn: 6 }
+      );
+
+      // Sesli Asistan Acil Anonsu Yap
+      mutfakSesliAnonsYap(`Dikkat! ${kod} nolu sipariş müşteri tarafından iptal edildi. Fırını ve ocağı durdurun!`);
+
+      // Acil İptal Modalı Aç
+      setIptalSiparisUyarisi({
+        id: siparis.id,
+        siparisKodu: kod,
+        musteriAdi: musteri,
+        gerekce,
+        toplamTutar: tutar,
+        zaman: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+      });
+    };
+
     // 1. Yerel Olay Dinleyicisi
     const yerelOlayDinle = (e: any) => {
       const sip = e.detail;
@@ -118,7 +171,10 @@ export function useMutfakBildirimleri(
       const sipMutfak = sip.mutfak_id || sip.mutfakId;
 
       if (siparisBuMutfagaAitMi(sipMutfak)) {
-        if (sip.id) bilinenSiparisIdleri.current.add(sip.id);
+        if (sip.id) {
+          bilinenSiparisIdleri.current.add(sip.id);
+          bilinenSiparisDurumlari.current.set(sip.id, sip.durum || 'beklemede');
+        }
         yeniSiparisBildir(sip);
       }
     };
@@ -126,10 +182,23 @@ export function useMutfakBildirimleri(
     const durumDinle = (e: any) => {
       const detay = e.detail;
       if (!detay) return;
+
       if (detay.durum === 'teslim_edildi') {
         const kod = detay.siparisKodu || detay.siparisKimligi;
         mutfakTeslimZiliCal(kod);
       }
+
+      if (detay.durum === 'iptal') {
+        const sipId = detay.siparisKimligi || detay.id;
+        if (sipId) {
+          const dahaOnceBiliniyorMu = bilinenIptalEdilenler.current.has(sipId);
+          bilinenIptalEdilenler.current.add(sipId);
+          if (detay.iptal_kaynagi !== 'mutfak' && !dahaOnceBiliniyorMu) {
+            iptalSiparisiBildir(detay);
+          }
+        }
+      }
+
       if (
         aktifUyariSiparisIdRef.current &&
         detay.siparisKimligi === aktifUyariSiparisIdRef.current &&
@@ -144,7 +213,7 @@ export function useMutfakBildirimleri(
     window.addEventListener('afyon_yeni_mutfak_siparisi', yerelOlayDinle);
     window.addEventListener('afyon_siparis_durum_degisti', durumDinle);
 
-    // 2. Canlı Firebase Dinleyicisi
+    // 2. Canlı Firebase Firestore Dinleyicisi
     let abonelikDurdur = () => {};
     if (canliFirebaseAktifMi()) {
       abonelikDurdur = koleksiyonuCanliDinle<any>('siparisler', (liste) => {
@@ -153,20 +222,40 @@ export function useMutfakBildirimleri(
         if (ilkYukleme.current) {
           liste.forEach((s) => {
             bilinenSiparisIdleri.current.add(s.id);
+            bilinenSiparisDurumlari.current.set(s.id, s.durum);
             if (s.durum === 'teslim_edildi' || s.asama === 'teslim_edildi') {
               bilinenTeslimEdilenler.current.add(s.id);
+            }
+            if (s.durum === 'iptal') {
+              bilinenIptalEdilenler.current.add(s.id);
             }
           });
           ilkYukleme.current = false;
           return;
         }
 
-        // Teslim edilen siparişler için mutfağa başarı zili çal
+        // Değişen ve iptal/teslim durumuna geçen siparişleri denetle
         liste.forEach((s) => {
-          const teslimMi = s.durum === 'teslim_edildi' || s.asama === 'teslim_edildi';
           const sipMutfak = s.mutfak_id || s.mutfakId;
+          if (!siparisBuMutfagaAitMi(sipMutfak)) return;
 
-          if (teslimMi && siparisBuMutfagaAitMi(sipMutfak) && !bilinenTeslimEdilenler.current.has(s.id)) {
+          const oncekiDurum = bilinenSiparisDurumlari.current.get(s.id);
+          bilinenSiparisDurumlari.current.set(s.id, s.durum);
+
+          // İPTAL KONTROLÜ: Önceden aktif olan sipariş müşteri tarafından iptal olduysa (Mutfak kendi iptal ettiyse alarm çalma)
+          if (
+            s.durum === 'iptal' &&
+            s.iptal_kaynagi !== 'mutfak' &&
+            !bilinenIptalEdilenler.current.has(s.id) &&
+            (oncekiDurum === 'beklemede' || oncekiDurum === 'hazirlaniyor' || oncekiDurum === 'paketlendi' || oncekiDurum === 'yolda' || !oncekiDurum)
+          ) {
+            bilinenIptalEdilenler.current.add(s.id);
+            iptalSiparisiBildir(s);
+          }
+
+          // TESLİM EDİLDİ KONTROLÜ
+          const teslimMi = s.durum === 'teslim_edildi' || s.asama === 'teslim_edildi';
+          if (teslimMi && !bilinenTeslimEdilenler.current.has(s.id)) {
             bilinenTeslimEdilenler.current.add(s.id);
             mutfakTeslimZiliCal(s.siparis_kodu || s.id);
           }
@@ -190,7 +279,10 @@ export function useMutfakBildirimleri(
         });
 
         if (yeniGelenler.length > 0) {
-          yeniGelenler.forEach((s) => bilinenSiparisIdleri.current.add(s.id));
+          yeniGelenler.forEach((s) => {
+            bilinenSiparisIdleri.current.add(s.id);
+            bilinenSiparisDurumlari.current.set(s.id, s.durum || 'beklemede');
+          });
           yeniSiparisBildir(yeniGelenler[0]);
         }
       });
@@ -208,6 +300,8 @@ export function useMutfakBildirimleri(
 
   return {
     yeniSiparisUyarisi,
-    uyariKapat
+    iptalSiparisUyarisi,
+    uyariKapat,
+    iptalUyarisiKapat
   };
 }

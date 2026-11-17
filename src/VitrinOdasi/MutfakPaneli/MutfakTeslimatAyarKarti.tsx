@@ -1,62 +1,105 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, CheckCircle2, Save, Loader2, Clock, Truck, MapPin } from 'lucide-react';
+import { ShoppingBag, CheckCircle2, AlertTriangle, Save, Loader2, Clock, Truck, MapPin, Power } from 'lucide-react';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
-import { koleksiyonGetir, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import { koleksiyonGetir, koleksiyonuCanliDinle, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import { useKuryeAyarlari } from '@/src/MalzemeCekmeceleri/useKuryeAyarlari';
 
 interface Props {
   mutfakId: string;
+  mutfakKaydi?: any;
+  mutfakAcik?: boolean;
+  onMutfakDurumuDegistir?: (acikMi: boolean) => void;
 }
 
 const VARSAYILAN_MUTFAK_IDLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
 
 function mutfakBelgesiEslesirMi(doc: any, mutfakId: string): boolean {
-  const docId = doc?.id || doc?.kimlik;
+  if (!doc || !mutfakId) return false;
+  const docId = doc.id || doc.kimlik;
+  if (docId === mutfakId || doc.kimlik === mutfakId || doc.sahip_id === mutfakId) return true;
   if (!docId) return false;
-  if (docId === mutfakId) return true;
   return VARSAYILAN_MUTFAK_IDLER.includes(mutfakId) && VARSAYILAN_MUTFAK_IDLER.includes(docId);
 }
 
-export const MutfakTeslimatAyarKarti: React.FC<Props> = ({ mutfakId }) => {
+export const MutfakTeslimatAyarKarti: React.FC<Props> = ({
+  mutfakId,
+  mutfakKaydi,
+  mutfakAcik,
+  onMutfakDurumuDegistir,
+}) => {
+  const { ayarlar: patronKuryeAyarlari } = useKuryeAyarlari();
   const [minTutar, setMinTutar] = useState<string>('150');
-  const [teslimatUcreti, setTeslimatUcreti] = useState<string>('25');
   const [hazirlanmaSuresi, setHazirlanmaSuresi] = useState<string>('25-35 dk');
   const [calismaSaatleri, setCalismaSaatleri] = useState<string>('09:00 - 21:00');
-  const [mahalle, setMahalle] = useState<string>('Marulcu Mah. / Merkez');
+  const [mahalle, setMahalle] = useState<string>('Merkez, Afyonkarahisar');
+  const [acikMi, setAcikMi] = useState<boolean>(mutfakAcik ?? true);
+  const [canliMutfak, setCanliMutfak] = useState<any>(mutfakKaydi || null);
 
   const [kaydediliyor, setKaydediliyor] = useState(false);
-  const [mesaj, setMesaj] = useState<string | null>(null);
+  const [mesaj, setMesaj] = useState<{ metin: string; tip: 'basari' | 'hata' } | null>(null);
+
+  const formuMutfaktanDoldur = (mutfak: any) => {
+    if (!mutfak) return;
+    setCanliMutfak(mutfak);
+    if (mutfak.min_siparis_tutari !== undefined && mutfak.min_siparis_tutari !== null) {
+      setMinTutar(String(Number(mutfak.min_siparis_tutari) || 0));
+    }
+    if (typeof mutfak.hazirlanma_suresi === 'string' && mutfak.hazirlanma_suresi.trim()) {
+      setHazirlanmaSuresi(mutfak.hazirlanma_suresi);
+    }
+    if (typeof mutfak.calisma_saatleri === 'string' && mutfak.calisma_saatleri.trim()) {
+      setCalismaSaatleri(mutfak.calisma_saatleri);
+    }
+    if (typeof mutfak.mahalle === 'string' && mutfak.mahalle.trim()) {
+      setMahalle(mutfak.mahalle);
+    } else if (typeof mutfak.adres === 'string' && mutfak.adres.trim()) {
+      setMahalle(mutfak.adres);
+    }
+    if (typeof mutfak.acik_mi === 'boolean') {
+      setAcikMi(mutfak.acik_mi);
+    }
+  };
 
   useEffect(() => {
-    const yukle = async () => {
+    if (mutfakKaydi) {
+      formuMutfaktanDoldur(mutfakKaydi);
+    }
+  }, [
+    mutfakKaydi?.id,
+    mutfakKaydi?.min_siparis_tutari,
+    mutfakKaydi?.hazirlanma_suresi,
+    mutfakKaydi?.calisma_saatleri,
+    mutfakKaydi?.mahalle,
+    mutfakKaydi?.acik_mi,
+  ]);
+
+  useEffect(() => {
+    if (typeof mutfakAcik === 'boolean') {
+      setAcikMi(mutfakAcik);
+    }
+  }, [mutfakAcik]);
+
+  useEffect(() => {
+    if (!mutfakId) return;
+
+    if (!canliFirebaseAktifMi()) {
       const lokal = localStorage.getItem(`mutfak_ayar_${mutfakId}`);
       if (lokal) {
         try {
-          const parsed = JSON.parse(lokal);
-          if (parsed.min_siparis_tutari !== undefined) setMinTutar(String(parsed.min_siparis_tutari));
-          if (parsed.teslimat_ucreti !== undefined) setTeslimatUcreti(String(parsed.teslimat_ucreti));
-          if (parsed.hazirlanma_suresi) setHazirlanmaSuresi(parsed.hazirlanma_suresi);
-          if (parsed.calisma_saatleri) setCalismaSaatleri(parsed.calisma_saatleri);
-          if (parsed.mahalle || parsed.adres) setMahalle(parsed.mahalle || parsed.adres);
+          formuMutfaktanDoldur(JSON.parse(lokal));
         } catch {}
       }
+      return;
+    }
 
-      if (canliFirebaseAktifMi()) {
-        try {
-          const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
-          const mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
-          if (mutfak) {
-            if (mutfak.min_siparis_tutari !== undefined) setMinTutar(String(mutfak.min_siparis_tutari));
-            if (mutfak.teslimat_ucreti !== undefined) setTeslimatUcreti(String(mutfak.teslimat_ucreti));
-            if (mutfak.hazirlanma_suresi) setHazirlanmaSuresi(mutfak.hazirlanma_suresi);
-            if (mutfak.calisma_saatleri) setCalismaSaatleri(mutfak.calisma_saatleri);
-            if (mutfak.mahalle || mutfak.adres) setMahalle(mutfak.mahalle || mutfak.adres);
-          }
-        } catch (err) {
-          console.warn('Mutfak ayarı okunamadı:', err);
-        }
+    const abonelikDurdur = koleksiyonuCanliDinle<any>('mutfaklar', (mutfaklar) => {
+      const mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
+      if (mutfak) {
+        formuMutfaktanDoldur(mutfak);
       }
-    };
-    yukle();
+    });
+
+    return () => abonelikDurdur();
   }, [mutfakId]);
 
   const kaydet = async (e: React.FormEvent) => {
@@ -64,38 +107,77 @@ export const MutfakTeslimatAyarKarti: React.FC<Props> = ({ mutfakId }) => {
     setKaydediliyor(true);
     setMesaj(null);
 
-    const veri = {
-      min_siparis_tutari: Math.max(0, Number(minTutar) || 0),
-      teslimat_ucreti: Math.max(0, Number(teslimatUcreti) || 0),
-      hazirlanma_suresi: hazirlanmaSuresi.trim() || '25-35 dk',
-      calisma_saatleri: calismaSaatleri.trim() || '09:00 - 21:00',
-      mahalle: mahalle.trim() || 'Merkez',
-      adres: mahalle.trim() || 'Merkez, Afyonkarahisar',
+    const parsedMinTutar = Number(minTutar);
+
+    // Teslimat ücreti Patron Masası (genel_ayarlar) tarafından yönetilir; mutfak sadece kendi operasyon alanlarını yazar
+    const senkronVeri = {
+      min_siparis_tutari: Number.isFinite(parsedMinTutar) ? Math.max(0, parsedMinTutar) : 0,
+      hazirlanma_suresi: String(hazirlanmaSuresi || '').trim() || '25-35 dk',
+      calisma_saatleri: String(calismaSaatleri || '').trim() || '09:00 - 21:00',
+      mahalle: String(mahalle || '').trim() || 'Merkez, Afyonkarahisar',
+      acik_mi: Boolean(acikMi),
     };
 
-    localStorage.setItem(`mutfak_ayar_${mutfakId}`, JSON.stringify(veri));
-    window.dispatchEvent(new Event(`mutfak_ayar_guncellendi_${mutfakId}`));
-
-    if (canliFirebaseAktifMi()) {
-      try {
-        const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
-        const mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
-        const hedefId = mutfak ? (mutfak.id || mutfak.kimlik) : mutfakId;
-
-        await belgeKaydet('mutfaklar', hedefId, {
-          ...(mutfak || {}),
-          id: hedefId,
-          ad: mutfak?.ad || 'Afyon Ev Mutfağı',
-          ...veri,
-        });
-      } catch (err) {
-        console.warn('Firebase mutfak ayar kaydetme hatası:', err);
-      }
+    if (!canliFirebaseAktifMi()) {
+      localStorage.setItem(`mutfak_ayar_${mutfakId}`, JSON.stringify(senkronVeri));
+      onMutfakDurumuDegistir?.(senkronVeri.acik_mi);
+      setKaydediliyor(false);
+      setMesaj({ metin: 'Çevrimdışı yerel ayar kaydedildi.', tip: 'basari' });
+      setTimeout(() => setMesaj(null), 3000);
+      return;
     }
 
-    setKaydediliyor(false);
-    setMesaj('Mutfak ve teslimat ayarları kaydedildi!');
-    setTimeout(() => setMesaj(null), 3000);
+    try {
+      let mutfak = canliMutfak || mutfakKaydi;
+      if (!mutfak) {
+        const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
+        mutfak = mutfaklar.find((m) => mutfakBelgesiEslesirMi(m, mutfakId));
+      }
+
+      const hedefId = mutfak?.id || mutfak?.kimlik || mutfakId;
+
+      if (!hedefId || hedefId === 'yonetici_patron_01') {
+        setKaydediliyor(false);
+        setMesaj({
+          metin: 'Hedef mutfak dokümanı bulunamadı! Lütfen üstten düzenlenecek mutfağı seçin.',
+          tip: 'hata',
+        });
+        return;
+      }
+
+      // Var olan dokümanda sadece 6 senkron alanını merge et (adres vb. alanları ezme)
+      const kayitPaketi = mutfak
+        ? senkronVeri
+        : {
+            id: hedefId,
+            ad: 'Afyon Ev Mutfağı',
+            ...senkronVeri,
+          };
+
+      const basarili = await belgeKaydet('mutfaklar', hedefId, kayitPaketi);
+
+      if (basarili) {
+        onMutfakDurumuDegistir?.(senkronVeri.acik_mi);
+        setMesaj({
+          metin: `Ana Vitrin ile senkronize kaydedildi! (${hedefId})`,
+          tip: 'basari',
+        });
+        setTimeout(() => setMesaj(null), 3500);
+      } else {
+        setMesaj({
+          metin: 'Firestore yazma başarısız oldu! Lütfen yetki veya bağlantıyı kontrol edin.',
+          tip: 'hata',
+        });
+      }
+    } catch (err) {
+      console.warn('Firebase mutfak ayar kaydetme hatası:', err);
+      setMesaj({
+        metin: 'Kayıt sırasında beklenmeyen bir hata oluştu.',
+        tip: 'hata',
+      });
+    } finally {
+      setKaydediliyor(false);
+    }
   };
 
   return (
@@ -105,15 +187,42 @@ export const MutfakTeslimatAyarKarti: React.FC<Props> = ({ mutfakId }) => {
           <ShoppingBag className="w-4 h-4" />
           <span>Mutfak Operasyon & Teslimat Ayarları</span>
         </div>
-        {mesaj && (
-          <span className="flex items-center gap-1 text-xs text-emerald-300 bg-emerald-500/20 px-2.5 py-0.5 rounded-full animate-fadeIn">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            {mesaj}
-          </span>
-        )}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setAcikMi((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+              acikMi
+                ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300'
+                : 'bg-rose-500/15 border-rose-500/50 text-rose-300'
+            }`}
+            title="Ana Vitrindeki mutfak açık/kapalı durumu"
+          >
+            <Power className="w-3 h-3" />
+            <span>{acikMi ? 'Vitrin Durumu: Açık' : 'Vitrin Durumu: Kapalı'}</span>
+          </button>
+
+          {mesaj && (
+            <span
+              className={`flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full animate-fadeIn ${
+                mesaj.tip === 'basari'
+                  ? 'text-emerald-300 bg-emerald-500/20'
+                  : 'text-rose-200 bg-rose-500/25 border border-rose-500/40'
+              }`}
+            >
+              {mesaj.tip === 'basari' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{mesaj.metin}</span>
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
         <div>
           <label className="text-purple-300 font-medium block mb-1">Min. Sipariş Tutarı (₺)</label>
           <input
@@ -122,22 +231,7 @@ export const MutfakTeslimatAyarKarti: React.FC<Props> = ({ mutfakId }) => {
             value={minTutar}
             onChange={(e) => setMinTutar(e.target.value)}
             className="w-full bg-[#120415] border border-purple-900/80 rounded-xl px-3 py-2 text-white font-bold text-xs focus:border-amber-400 outline-none"
-            placeholder="150"
-          />
-        </div>
-
-        <div>
-          <label className="text-purple-300 font-medium flex items-center gap-1 mb-1">
-            <Truck className="w-3 h-3 text-amber-400" />
-            <span>Teslimat Ücreti (₺)</span>
-          </label>
-          <input
-            type="number"
-            min="0"
-            value={teslimatUcreti}
-            onChange={(e) => setTeslimatUcreti(e.target.value)}
-            className="w-full bg-[#120415] border border-purple-900/80 rounded-xl px-3 py-2 text-white font-bold text-xs focus:border-amber-400 outline-none"
-            placeholder="25"
+            placeholder="500"
           />
         </div>
 
@@ -179,15 +273,23 @@ export const MutfakTeslimatAyarKarti: React.FC<Props> = ({ mutfakId }) => {
             value={mahalle}
             onChange={(e) => setMahalle(e.target.value)}
             className="w-full bg-[#120415] border border-purple-900/80 rounded-xl px-3 py-2 text-white text-xs focus:border-amber-400 outline-none"
-            placeholder="Marulcu Mah. / Merkez"
+            placeholder="Merkez, Afyonkarahisar"
           />
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <p className="text-[10px] text-purple-400/70">
-          Minimum sepet tutarı, teslimat ücreti, çalışma saatleri ve mahalle bilgileri vitrinde müşterilere gösterilir.
-        </p>
+      <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1 rounded-lg">
+            <Truck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>
+              Teslimat Ücreti (Patron Masası): <strong>{Number(patronKuryeAyarlari.taban_ucret) || 35} ₺</strong>
+            </span>
+          </span>
+          <p className="text-[10px] text-purple-400/70">
+            Teslimat ücreti yalnızca Süper Admin tarafından yönetilir; mutfak ayarları doğrudan vitrine senkron yazılır.
+          </p>
+        </div>
         <button
           type="submit"
           disabled={kaydediliyor}

@@ -30,6 +30,19 @@
         "durum": { "type": "string" },
         "toplam_tutar": { "type": "number" }
       }
+    },
+    "CokluMenu": {
+      "title": "CokluMenu",
+      "description": "Sınırsız çeşit içeren çoklu ev menüsü / ziyafet paketi",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mutfak_id": { "type": "string" },
+        "baslik": { "type": "string" },
+        "fiyat": { "type": "number" },
+        "stokta_var_mi": { "type": "boolean" },
+        "onay_durumu": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -40,6 +53,10 @@
     "/yemekler/{yemekId}": {
       "schema": "Yemek",
       "description": "Mutfak yemekleri"
+    },
+    "/coklu_menuler/{menuId}": {
+      "schema": "CokluMenu",
+      "description": "Çoklu çeşit ev menüleri"
     },
     "/siparisler/{siparisId}": {
       "schema": "Siparis",

@@ -44,7 +44,13 @@ export function yerelSiparisKaydet(siparis: TestSiparis) {
 }
 
 // Tüm yerel depolama anahtarlarında sipariş durumunu güncelle
-export function yerelSiparisDurumGuncelle(siparisKimligi: string, yeniDurum: string, durumAciklamasi?: string) {
+export function yerelSiparisDurumGuncelle(
+  siparisKimligi: string,
+  yeniDurum: string,
+  durumAciklamasi?: string,
+  hazirlanmaSuresiDakika?: number,
+  ekSureDakikaEkle?: number
+) {
   try {
     const anahtarlar = [
       SIPARIS_YEREL_DEPO_ANAHTARI,
@@ -58,12 +64,25 @@ export function yerelSiparisDurumGuncelle(siparisKimligi: string, yeniDurum: str
         if (Array.isArray(liste)) {
           const guncel = liste.map((s: any) => {
             if (s.id === siparisKimligi || s.kimlik === siparisKimligi || s.siparis_kodu === siparisKimligi || s.siparisKodu === siparisKimligi) {
-              return {
+              const obj: any = {
                 ...s,
                 durum: yeniDurum,
                 durum_aciklamasi: durumAciklamasi || (yeniDurum === 'iptal' ? 'Sipariş İptal Edildi.' : s.durum_aciklamasi),
                 durumAciklamasi: durumAciklamasi || (yeniDurum === 'iptal' ? 'Sipariş İptal Edildi.' : s.durumAciklamasi)
               };
+              if (hazirlanmaSuresiDakika !== undefined && yeniDurum === 'hazirlaniyor') {
+                obj.hazirlanmaSuresiDakika = hazirlanmaSuresiDakika;
+                obj.hazirlanma_suresi_dakika = hazirlanmaSuresiDakika;
+                if (!obj.ocaga_alinma_zamani) {
+                  obj.ocaga_alinma_zamani = new Date().toISOString();
+                }
+              }
+              if (ekSureDakikaEkle && ekSureDakikaEkle > 0) {
+                const yeniEk = (Number(obj.ekSureDakika ?? obj.ek_sure_dakika) || 0) + ekSureDakikaEkle;
+                obj.ekSureDakika = yeniEk;
+                obj.ek_sure_dakika = yeniEk;
+              }
+              return obj;
             }
             return s;
           });
@@ -77,6 +96,18 @@ export function yerelSiparisDurumGuncelle(siparisKimligi: string, yeniDurum: str
       if (s.id === siparisKimligi || (s as any).kimlik === siparisKimligi || s.siparis_kodu === siparisKimligi) {
         s.durum = yeniDurum as any;
         s.durum_aciklamasi = durumAciklamasi || (yeniDurum === 'iptal' ? 'Sipariş İptal Edildi.' : s.durum_aciklamasi);
+        if (hazirlanmaSuresiDakika !== undefined && yeniDurum === 'hazirlaniyor') {
+          (s as any).hazirlanmaSuresiDakika = hazirlanmaSuresiDakika;
+          (s as any).hazirlanma_suresi_dakika = hazirlanmaSuresiDakika;
+          if (!(s as any).ocaga_alinma_zamani) {
+            (s as any).ocaga_alinma_zamani = new Date().toISOString();
+          }
+        }
+        if (ekSureDakikaEkle && ekSureDakikaEkle > 0) {
+          const yeniEk = (Number((s as any).ekSureDakika ?? (s as any).ek_sure_dakika) || 0) + ekSureDakikaEkle;
+          (s as any).ekSureDakika = yeniEk;
+          (s as any).ek_sure_dakika = yeniEk;
+        }
       }
     });
   } catch {}
@@ -123,6 +154,7 @@ export function useMusteriSiparisleri(musteriId?: string, musteriTelefon?: strin
             const gercekPin = d.pinKodu || d.pin_kodu || d.teslimat_kodu || d.pin || '';
 
             const siparisNesnesi: TestSiparis = {
+              ...d,
               id: d.id,
               siparisKodu: kod,
               siparis_kodu: kod,
@@ -142,6 +174,10 @@ export function useMusteriSiparisleri(musteriId?: string, musteriTelefon?: strin
               kurye_teslim_aldi_mi: d.kurye_teslim_aldi_mi,
               durum: d.durum || 'hazirlaniyor',
               durum_aciklamasi: d.durum_aciklamasi || (d.durum === 'iptal' ? 'Sipariş İptal Edildi.' : 'Siparişiniz hazırlanıyor.'),
+              hazirlanmaSuresiDakika: Number(d.hazirlanmaSuresiDakika ?? d.hazirlanma_suresi_dakika ?? d.sure ?? d.secilen_sure ?? d.dakika) || undefined,
+              hazirlanma_suresi_dakika: Number(d.hazirlanma_suresi_dakika ?? d.hazirlanmaSuresiDakika ?? d.sure ?? d.secilen_sure ?? d.dakika) || undefined,
+              ekSureDakika: Number(d.ekSureDakika ?? d.ek_sure_dakika ?? 0) || 0,
+              ocaga_alinma_zamani: d.ocaga_alinma_zamani || d.guncellenme_zamani,
               toplam_tutar: Number(d.toplam_tutar || d.tutar) || 0,
               teslimat_ucreti: Number(d.teslimat_ucreti) || 0,
               odeme_yontemi: d.odeme_yontemi || 'kapida_nakit',

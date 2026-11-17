@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit3, Trash2, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Edit3, Trash2, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { kategorileriGetir } from '@/src/MalzemeCekmeceleri/kategorileriGetir';
 import { testYemekGuncelle, testYemekSil } from '@/src/veritabani/CanliVeriYardimcisi';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
@@ -124,23 +124,34 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#1D0A20] border border-[#521E5C] rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Üst Bar */}
-        <div className="p-4 border-b border-[#3E1646] flex items-center justify-between bg-[#240C28]">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-              <Edit3 className="w-4 h-4 stroke-[2.5]" />
-            </div>
-            <h3 className="font-bold text-sm text-white">Yemeği & Varyasyonları Düzenle</h3>
-          </div>
-          <button onClick={onKapat} disabled={kaydediliyor} className="text-gray-400 hover:text-white cursor-pointer">
-            <X className="w-5 h-5" />
+    <div className="space-y-4 pb-6 animate-fadeIn">
+      {/* Sayfa Üst Geri Dönüş Barı */}
+      <div className="bg-[#180A1F] border border-[#3E1646] rounded-2xl p-3.5 sm:p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onKapat}
+            disabled={kaydediliyor}
+            className="px-3 py-2 rounded-xl bg-[#271033] hover:bg-[#351646] border border-purple-700/70 text-purple-100 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shrink-0 transition-all disabled:opacity-50"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span>Menüm&apos;e Dön</span>
           </button>
+          <div className="min-w-0">
+            <h2 className="font-black text-sm sm:text-base text-white truncate flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-amber-400 shrink-0 hidden sm:inline" />
+              <span>Yemeği &amp; Varyasyonları Düzenle</span>
+            </h2>
+            <p className="text-[11px] text-purple-300 truncate">
+              {yemek.baslik}
+            </p>
+          </div>
         </div>
+      </div>
 
-        {/* Form Alanı */}
-        <form onSubmit={kaydet} className="p-4 overflow-y-auto space-y-3.5 flex-1 text-xs">
+      {/* Sayfa İçeriği & Form */}
+      <div className="bg-[#1D0A20] border border-[#521E5C] rounded-3xl w-full shadow-xl overflow-hidden">
+        <form onSubmit={kaydet} className="p-4 sm:p-5 space-y-4 text-xs">
           {hata && (
             <div className="bg-rose-950/80 border border-rose-500 text-rose-200 p-2.5 rounded-xl text-xs">
               {hata}

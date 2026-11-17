@@ -33,17 +33,17 @@ export async function mutfakSiparisDurumuGuncelle(
       ? 'kuryede' 
       : 'teslim_edildi';
 
-  // 1. Yerel depoyu güncelle
-  yerelSiparisDurumGuncelle(siparisId, yeniDurum, aciklama);
+  // 1. Yerel depoyu güncelle (dakika dahil)
+  yerelSiparisDurumGuncelle(siparisId, yeniDurum, aciklama, dakika);
   if (siparisKodu && siparisKodu !== siparisId) {
-    yerelSiparisDurumGuncelle(siparisKodu, yeniDurum, aciklama);
+    yerelSiparisDurumGuncelle(siparisKodu, yeniDurum, aciklama, dakika);
   }
 
   // 2. Canlı event fırlat
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('afyon_siparis_durum_degisti', {
-        detail: { siparisKimligi: siparisId, siparisKodu, durum: yeniDurum, aciklama, asama: yeniAsama }
+        detail: { siparisKimligi: siparisId, siparisKodu, durum: yeniDurum, aciklama, asama: yeniAsama, hazirlanmaSuresiDakika: dakika }
       })
     );
   }
@@ -51,15 +51,21 @@ export async function mutfakSiparisDurumuGuncelle(
   // 3. Canlı Firebase Firestore
   if (canliFirebaseAktifMi()) {
     try {
-      const guncellenecekVeri = {
+      const guncellenecekVeri: any = {
         durum: yeniDurum,
         asama: yeniAsama,
-        hazirlanmaSuresiDakika: dakika,
         durum_aciklamasi: aciklama,
         durumAciklamasi: aciklama,
         sonGuncelleme: new Date().toLocaleTimeString('tr-TR'),
         guncellenme_zamani: new Date().toISOString()
       };
+
+      if (yeniDurum === 'hazirlaniyor') {
+        const gecerliSure = Math.max(1, Number(dakika) || 25);
+        guncellenecekVeri.hazirlanmaSuresiDakika = gecerliSure;
+        guncellenecekVeri.hazirlanma_suresi_dakika = gecerliSure;
+        guncellenecekVeri.ocaga_alinma_zamani = new Date().toISOString();
+      }
 
       const tumFbSiparisler = await koleksiyonGetir<any>('siparisler');
       const eslesenDocIdler: string[] = [];
@@ -119,6 +125,69 @@ export async function mutfakSiparisDurumuGuncelle(
       }
     } catch (hata) {
       console.warn('Firebase mutfak durum güncelleme hatası:', hata);
+    }
+  }
+}
+
+export async function mutfakSiparisEkSureEkle(
+  siparisId: string,
+  ekDakika: number = 10,
+  siparisKodu?: string
+) {
+  const yeniAciklama = `Sipariş yoğunluğu nedeniyle +${ekDakika} dk ek süre eklendi. Titizlikle hazırlanıyor.`;
+
+  // 1. Yerel depoyu güncelle
+  yerelSiparisDurumGuncelle(siparisId, 'hazirlaniyor', yeniAciklama, undefined, ekDakika);
+  if (siparisKodu && siparisKodu !== siparisId) {
+    yerelSiparisDurumGuncelle(siparisKodu, 'hazirlaniyor', yeniAciklama, undefined, ekDakika);
+  }
+
+  // 2. Canlı event fırlat
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('afyon_siparis_durum_degisti', {
+        detail: { siparisKimligi: siparisId, siparisKodu, durum: 'hazirlaniyor', aciklama: yeniAciklama, ekDakika }
+      })
+    );
+  }
+
+  // 3. Firebase Firestore
+  if (canliFirebaseAktifMi()) {
+    try {
+      const tumFbSiparisler = await koleksiyonGetir<any>('siparisler');
+      if (tumFbSiparisler && Array.isArray(tumFbSiparisler)) {
+        for (const fbDoc of tumFbSiparisler) {
+          const docId = fbDoc.id;
+          const koddur = fbDoc.siparis_kodu || fbDoc.siparisKodu;
+          const eslesiyorMu = 
+            docId === siparisId || 
+            (siparisKodu && docId === siparisKodu) || 
+            koddur === siparisId || 
+            (siparisKodu && koddur === siparisKodu);
+
+          if (eslesiyorMu && docId) {
+            const toplamEkSure = (Number(fbDoc.ekSureDakika ?? fbDoc.ek_sure_dakika) || 0) + ekDakika;
+            const guncelleme = {
+              ekSureDakika: toplamEkSure,
+              ek_sure_dakika: toplamEkSure,
+              durum_aciklamasi: yeniAciklama,
+              durumAciklamasi: yeniAciklama,
+              sonGuncelleme: new Date().toLocaleTimeString('tr-TR'),
+              guncellenme_zamani: new Date().toISOString()
+            };
+            await belgeKaydet('siparisler', docId, guncelleme);
+          }
+        }
+      }
+
+      patronBildirimiEkle(
+        'siparis_durumu',
+        'Ek Pişirme Süresi İstendi ⏱️',
+        `#${siparisKodu || siparisId} nolu sipariş için mutfak +${ekDakika} dakika ek süre bildirdi.`,
+        siparisId
+      );
+    } catch (err) {
+      console.warn('Firebase ek süre kaydetme hatası:', err);
     }
   }
 }

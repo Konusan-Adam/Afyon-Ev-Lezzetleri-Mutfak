@@ -17,6 +17,7 @@ export async function siparisIptalEt(siparisKimligi: string, gerekceBaslik: stri
       await belgeKaydet('siparisler', siparisKimligi, {
         durum: 'iptal',
         asama: 'iptal',
+        iptal_kaynagi: 'mutfak',
         durum_aciklamasi: aciklamaMetni,
         durumAciklamasi: aciklamaMetni,
         iptal_gerekcesi: gerekceBaslik,
@@ -33,7 +34,7 @@ export async function siparisIptalEt(siparisKimligi: string, gerekceBaslik: stri
 
   // 4. Global olay tetikle
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('afyon_siparis_durum_degisti', { detail: { siparisKimligi, durum: 'iptal' } }));
+    window.dispatchEvent(new CustomEvent('afyon_siparis_durum_degisti', { detail: { siparisKimligi, durum: 'iptal', iptal_kaynagi: 'mutfak' } }));
   }
 
   return true;

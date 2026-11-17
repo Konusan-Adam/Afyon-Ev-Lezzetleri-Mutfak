@@ -11,23 +11,33 @@ import {
   LogOut,
   Edit3,
   Search,
-  Sparkles
+  Store,
+  Layers,
+  Trash2
 } from 'lucide-react';
 import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
-import { Yemek } from '@/src/veritabani/VeriTipleri';
+import { Yemek, CokluMenuTipi } from '@/src/veritabani/VeriTipleri';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
 import { koleksiyonuCanliDinle, belgeKaydet, koleksiyonGetir } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { useMusteriSiparisleri } from '@/src/MalzemeCekmeceleri/useMusteriSiparisleri';
 import { gorselUrlGuvenliYap } from '@/src/MalzemeCekmeceleri/sunucuGorselYukleyici';
+import {
+  useMutfakCokluMenuleri,
+  cokluMenuStokDegistir,
+  cokluMenuSil,
+} from '@/src/MalzemeCekmeceleri/Mutfak/cokluMenuIslemleri';
 import { YeniYemekEklePenceresi } from './YeniYemekEklePenceresi';
 import { YemekDuzenlemePenceresi } from './YemekDuzenlemePenceresi';
+import { CokluMenuKolajOnizleme } from './CokluMenuKolajOnizleme';
+import { CokluMenuOlusturPenceresi } from './CokluMenuOlusturPenceresi';
 import { MutfakCuzdanSekmesi } from './MutfakCuzdanSekmesi';
-import { MutfakBelgelerSekmesi } from './MutfakBelgelerSekmesi';
-import { MutfakAfisSekmesi } from './MutfakAfisSekmesi';
+import { MutfakDukkanimSekmesi } from './MutfakDukkanimSekmesi';
+import { MutfakAltNavigasyon, MutfakAnaSekme } from './MutfakAltNavigasyon';
 import { SiparisIptalPenceresi } from '../Bilesenler/MutfakYonetimi/SiparisIptalPenceresi';
 import { MutfakZilButonu } from '../Bilesenler/Mutfak/MutfakZilButonu';
-import { MutfakTeslimatAyarKarti } from './MutfakTeslimatAyarKarti';
+import { SesliAsistanButonu } from '../Bilesenler/Mutfak/SesliAsistanButonu';
 import { MutfakTekliSiparisKarti } from '../Bilesenler/Mutfak/MutfakTekliSiparisKarti';
+import { MutfakPisirmeOzetiKarti } from '../Bilesenler/Mutfak/MutfakPisirmeOzetiKarti';
 import { useMutfakBildirimleri } from '@/src/MalzemeCekmeceleri/Mutfak/useMutfakBildirimleri';
 import { ekranUyanikTutBaslat } from '@/src/MalzemeCekmeceleri/Mutfak/MutfakZilServisi';
 import {
@@ -35,11 +45,20 @@ import {
   androidOturumKapatBildir,
 } from '@/src/MalzemeCekmeceleri/Mutfak/AndroidKopruServisi';
 import { MutfakYeniSiparisUyarisi } from '../Bilesenler/Mutfak/MutfakYeniSiparisUyarisi';
+import { MutfakSiparisIptalUyarisi } from '../Bilesenler/Mutfak/MutfakSiparisIptalUyarisi';
 import { MutfakGirisEkrani } from './MutfakGirisEkrani';
 import { ApkGuncellemeUyarisi } from './ApkGuncellemeUyarisi';
 
 const VARSAYILAN_TEST_MUTFAKLARI = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1', 'm2', 'mutfak-muzaffer'];
 const M1_ESLESEN_KIMLIKLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
+
+function telefonRakamTemizle(tel?: string): string {
+  if (!tel) return '';
+  const rakam = tel.replace(/\D/g, '');
+  if (rakam.startsWith('90') && rakam.length === 12) return rakam.slice(2);
+  if (rakam.startsWith('0') && rakam.length === 11) return rakam.slice(1);
+  return rakam;
+}
 
 function kayitBuMutfagaAitMi(kayitMutfakId: string | undefined, mutfakId: string): boolean {
   if (!kayitMutfakId) return M1_ESLESEN_KIMLIKLER.includes(mutfakId);
@@ -47,12 +66,30 @@ function kayitBuMutfagaAitMi(kayitMutfakId: string | undefined, mutfakId: string
   return M1_ESLESEN_KIMLIKLER.includes(mutfakId) && M1_ESLESEN_KIMLIKLER.includes(kayitMutfakId);
 }
 
+function mutfakDokumaniKullaniciyaAitMi(
+  doc: any,
+  hedefKimlik: string,
+  kullaniciTelefon?: string
+): boolean {
+  if (!doc) return false;
+  const docId = doc.id || doc.kimlik;
+  if (kayitBuMutfagaAitMi(docId, hedefKimlik)) return true;
+  if (doc.kimlik && kayitBuMutfagaAitMi(doc.kimlik, hedefKimlik)) return true;
+  if (doc.sahip_id && kayitBuMutfagaAitMi(doc.sahip_id, hedefKimlik)) return true;
+  const temizKullaniciTel = telefonRakamTemizle(kullaniciTelefon);
+  const temizDocTel = telefonRakamTemizle(doc.telefon);
+  return Boolean(temizKullaniciTel && temizDocTel && temizKullaniciTel === temizDocTel);
+}
+
 export const MutfakPaneli: React.FC = () => {
   const { aktifKullanici, cikisYap } = kullaniciHafizasiKullan();
   const [mutfakAcik, setMutfakAcik] = useState(true);
   const [mutfakKaydi, setMutfakKaydi] = useState<any>(null);
+  const [tumMutfaklar, setTumMutfaklar] = useState<any[]>([]);
+  const [seciliYoneticiMutfakId, setSeciliYoneticiMutfakId] = useState<string>('');
 
-  const [aktifSekme, setAktifSekme] = useState<'siparisler' | 'menum' | 'afis' | 'kazanc' | 'belgeler' | 'tamamlanan'>('siparisler');
+  const [aktifSekme, setAktifSekme] = useState<MutfakAnaSekme>('siparisler');
+  const [kazancAltSekme, setKazancAltSekme] = useState<'cuzdan' | 'tamamlanan'>('cuzdan');
   const [yemekModalAcik, setYemekModalAcik] = useState(false);
   const [duzenlenenYemek, setDuzenlenenYemek] = useState<Yemek | null>(null);
   const [iptalModalSiparis, setIptalModalSiparis] = useState<{ id: string; kodu: string } | null>(null);
@@ -61,47 +98,76 @@ export const MutfakPaneli: React.FC = () => {
   const [menuArama, setMenuArama] = useState('');
   const [seciliMenuKategori, setSeciliMenuKategori] = useState('Tümü');
   const [stokDegisenYemekId, setStokDegisenYemekId] = useState<string | null>(null);
+  const [cokluMenuModalAcik, setCokluMenuModalAcik] = useState(false);
+  const [duzenlenecekCokluMenu, setDuzenlenecekCokluMenu] = useState<CokluMenuTipi | null>(null);
+  const [stokDegisenCokluMenuId, setStokDegisenCokluMenuId] = useState<string | null>(null);
+  const [silinecekCokluMenuId, setSilinecekCokluMenuId] = useState<string | null>(null);
 
   const { siparisler: canliSiparisler, yenile: siparisleriYenile } = useMusteriSiparisleri();
 
-  const mutfakId = aktifKullanici?.kimlik || aktifKullanici?.id || 'm1';
+  const yoneticiMi = aktifKullanici?.rol === 'yonetici';
+  const kullaniciHamMutfakId = aktifKullanici?.kimlik || aktifKullanici?.id || 'm1';
+  const mutfakId = yoneticiMi
+    ? (seciliYoneticiMutfakId || mutfakKaydi?.id || mutfakKaydi?.kimlik || 'm1')
+    : (mutfakKaydi?.id || mutfakKaydi?.kimlik || kullaniciHamMutfakId);
+
   const mutfakAdi =
     mutfakKaydi?.mutfak_adi ||
     mutfakKaydi?.ad ||
-    aktifKullanici?.isletme_adi ||
-    aktifKullanici?.ad_soyad ||
-    'Afyon Ev Mutfağı';
+    (yoneticiMi ? 'Afyon Ev Mutfağı' : aktifKullanici?.isletme_adi || aktifKullanici?.ad_soyad || 'Afyon Ev Mutfağı');
 
   const oturumYetkiliMi = Boolean(
     aktifKullanici &&
     (aktifKullanici.rol === 'ev_mutfagi' || aktifKullanici.rol === 'ticari_restoran' || aktifKullanici.rol === 'yonetici')
   );
 
-  // Mutfak kaydını canlı dinle (puan, mahalle, açık/kapalı durumu, onay durumu)
+  // Mutfak kaydını canlı dinle (puan, mahalle, açık/kapalı durumu, onay durumu, teslimat ayarları)
   useEffect(() => {
-    if (!oturumYetkiliMi || !canliFirebaseAktifMi() || !mutfakId) return;
+    if (!oturumYetkiliMi || !canliFirebaseAktifMi()) return;
 
     const abonelikDurdur = koleksiyonuCanliDinle<any>('mutfaklar', (mutfaklar) => {
-      const bulunan = mutfaklar.find((m) =>
-        kayitBuMutfagaAitMi(m.id || m.kimlik, mutfakId)
+      const gecerliMutfaklar = mutfaklar.filter(
+        (m) => (m.id || m.kimlik) !== 'yonetici_patron_01'
       );
+      setTumMutfaklar(gecerliMutfaklar);
+
+      let bulunan: any = null;
+      if (yoneticiMi) {
+        const hedef = seciliYoneticiMutfakId || 'm1';
+        bulunan =
+          gecerliMutfaklar.find((m) => (m.id || m.kimlik) === hedef) ||
+          gecerliMutfaklar.find((m) => kayitBuMutfagaAitMi(m.id || m.kimlik, 'm1')) ||
+          gecerliMutfaklar[0] ||
+          null;
+        if (bulunan && !seciliYoneticiMutfakId) {
+          setSeciliYoneticiMutfakId(bulunan.id || bulunan.kimlik);
+        }
+      } else {
+        bulunan = gecerliMutfaklar.find((m) =>
+          mutfakDokumaniKullaniciyaAitMi(m, kullaniciHamMutfakId, aktifKullanici?.telefon)
+        );
+      }
+
       if (bulunan) {
         setMutfakKaydi(bulunan);
-        if (bulunan.acik_mi !== undefined) {
-          setMutfakAcik(Boolean(bulunan.acik_mi));
+        if (typeof bulunan.acik_mi === 'boolean') {
+          setMutfakAcik(bulunan.acik_mi);
         }
       }
     });
 
     return () => abonelikDurdur();
-  }, [mutfakId, oturumYetkiliMi]);
+  }, [oturumYetkiliMi, yoneticiMi, seciliYoneticiMutfakId, kullaniciHamMutfakId, aktifKullanici?.telefon]);
 
-  // 🔔 Canlı Sipariş Zil & Bildirim Dedektörü
-  const { yeniSiparisUyarisi, uyariKapat } = useMutfakBildirimleri(mutfakId, {
+  // 🔔 Canlı Sipariş Zil & İptal Alarmı Dedektörü
+  const { yeniSiparisUyarisi, iptalSiparisUyarisi, uyariKapat, iptalUyarisiKapat } = useMutfakBildirimleri(mutfakId, {
     aktifMi: oturumYetkiliMi,
     ekMutfakKimlikleri: [mutfakKaydi?.id, mutfakKaydi?.kimlik].filter(Boolean) as string[],
     tumMutfaklariDinle: aktifKullanici?.rol === 'yonetici',
   });
+
+  // 🍱 Çoklu Menüler (coklu_menuler koleksiyonu)
+  const { menuler: cokluMenuler } = useMutfakCokluMenuleri(mutfakId, oturumYetkiliMi);
 
   // Mutfak açıkken ekranın otomatik kilitlenmesini önle
   useEffect(() => {
@@ -241,18 +307,24 @@ export const MutfakPaneli: React.FC = () => {
     const yeniDurum = !mutfakAcik;
     setMutfakAcik(yeniDurum);
 
-    if (canliFirebaseAktifMi() && mutfakId) {
+    if (canliFirebaseAktifMi() && mutfakId && mutfakId !== 'yonetici_patron_01') {
       try {
-        const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
-        const mutfak = mutfaklar.find((m) => kayitBuMutfagaAitMi(m.id || m.kimlik, mutfakId));
+        let mutfak = mutfakKaydi;
+        if (!mutfak) {
+          const mutfaklar = await koleksiyonGetir<any>('mutfaklar');
+          mutfak = mutfaklar.find((m) =>
+            mutfakDokumaniKullaniciyaAitMi(m, mutfakId, aktifKullanici?.telefon)
+          );
+        }
         const hedefId = mutfak?.id || mutfak?.kimlik || mutfakId;
 
-        await belgeKaydet('mutfaklar', hedefId, {
-          ...(mutfak || {}),
-          id: hedefId,
-          ad: mutfak?.ad || mutfakAdi,
-          acik_mi: yeniDurum
-        });
+        await belgeKaydet(
+          'mutfaklar',
+          hedefId,
+          mutfak
+            ? { acik_mi: yeniDurum }
+            : { id: hedefId, ad: mutfakAdi, acik_mi: yeniDurum }
+        );
       } catch (err) {
         console.warn('Mutfak durum güncelleme hatası:', err);
       }
@@ -279,6 +351,21 @@ export const MutfakPaneli: React.FC = () => {
     }
   };
 
+  const cokluMenuHizliStokDegistir = async (menu: CokluMenuTipi) => {
+    const suAnSatista = menu.stokta_var_mi !== false && menu.tukendi_mi !== true;
+    setStokDegisenCokluMenuId(menu.id);
+    try {
+      await cokluMenuStokDegistir(menu.id, !suAnSatista);
+    } finally {
+      setStokDegisenCokluMenuId(null);
+    }
+  };
+
+  const cokluMenuKaliciSil = async (menuId: string) => {
+    await cokluMenuSil(menuId);
+    setSilinecekCokluMenuId(null);
+  };
+
   if (!aktifKullanici || (aktifKullanici.rol !== 'ev_mutfagi' && aktifKullanici.rol !== 'ticari_restoran' && aktifKullanici.rol !== 'yonetici')) {
     return <MutfakGirisEkrani />;
   }
@@ -291,7 +378,7 @@ export const MutfakPaneli: React.FC = () => {
   const logoSrc = '/assets/aistudio/image_48081a60_bc73ebae.jpg';
 
   return (
-    <div className="w-full min-h-screen bg-[#0C020E] text-gray-200 select-none pb-16">
+    <div className="w-full min-h-screen bg-[#0C020E] text-gray-200 select-none pb-24 md:pb-16">
       {/* 🔔 YENİ SİPARİŞ CANLI FLAŞ BİLDİRİMİ & ZİL ALARMI */}
       <MutfakYeniSiparisUyarisi
         uyari={yeniSiparisUyarisi}
@@ -299,58 +386,91 @@ export const MutfakPaneli: React.FC = () => {
         onSipariseGit={() => setAktifSekme('siparisler')}
       />
 
+      {/* 🛑 MÜŞTERİ SİPARİŞ İPTAL & İADE ACİL ALARMI */}
+      <MutfakSiparisIptalUyarisi
+        uyari={iptalSiparisUyarisi}
+        onKapat={iptalUyarisiKapat}
+        onGecmiseGit={() => {
+          setAktifSekme('kazanc');
+          setKazancAltSekme('tamamlanan');
+        }}
+      />
+
       {/* 👑 PATRON ÖNİZLEME BANNERI (Yalnızca Yönetici Hesabında Görünür) */}
       {aktifKullanici?.rol === 'yonetici' && (
-        <div className="bg-gradient-to-r from-amber-600 via-purple-900 to-amber-700 text-white px-4 py-2 text-xs flex items-center justify-between shadow-lg">
+        <div className="bg-gradient-to-r from-amber-600 via-purple-900 to-amber-700 text-white px-4 py-2 text-xs flex items-center justify-between flex-wrap gap-2 shadow-lg">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-amber-300" />
             <span className="font-bold">EV MUTFAĞI & AŞÇI PANELİ (Yönetici Görünümü)</span>
           </div>
-          <span className="text-[11px] text-amber-200 font-semibold hidden sm:inline">
-            Tam yetkili mutfak denetim modu
-          </span>
+          <div className="flex items-center gap-2">
+            {tumMutfaklar.length > 0 && (
+              <select
+                value={mutfakId}
+                onChange={(e) => setSeciliYoneticiMutfakId(e.target.value)}
+                className="bg-[#180A1F] border border-amber-400/50 text-amber-200 text-[11px] font-bold rounded-lg px-2.5 py-1 outline-none cursor-pointer"
+                title="Yönetilecek aktif mutfağı seçin"
+              >
+                {tumMutfaklar.map((m) => {
+                  const id = m.id || m.kimlik;
+                  const ad = m.mutfak_adi || m.ad || id;
+                  return (
+                    <option key={id} value={id}>
+                      {ad} ({id})
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+            <span className="text-[11px] text-amber-200 font-semibold hidden md:inline">
+              Tam yetkili mutfak denetim modu
+            </span>
+          </div>
         </div>
       )}
 
       {/* 📲 APK OTOMATİK GÜNCELLEME UYARISI (Yalnızca Android Uygulamasında Görünür) */}
       <ApkGuncellemeUyarisi />
 
-      {/* Üst Başlık Barı */}
-      <header className="bg-[#180A1F] border-b border-[#3E1646] px-4 py-4">
-        <div className="anasayfa-genislik flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
+      {/* Üst Başlık Barı (Mobilde sadece Mutfak Adı + Aç/Kapa butonu, masaüstünde tam kontroller) */}
+      <header className="bg-[#180A1F] border-b border-[#3E1646] px-3.5 sm:px-4 py-3.5 sticky top-0 z-30 backdrop-blur-md">
+        <div className="anasayfa-genislik flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <img
               src={logoSrc}
               alt="Mutfak Logosu"
-              className="w-11 h-11 rounded-2xl object-cover bg-white/10 p-0.5 border border-amber-500/40 shadow-md shrink-0"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl object-cover bg-white/10 p-0.5 border border-amber-500/40 shadow-md shrink-0"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = '/assets/aistudio/image_48081a60_bc73ebae.jpg';
               }}
             />
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-white font-black text-sm sm:text-base">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-white font-black text-sm sm:text-base truncate">
                   {mutfakAdi}
                 </h1>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  ★ {mutfakPuani} Puan
+                <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                  ★ {mutfakPuani}
                 </span>
               </div>
-              <p className={`text-xs ${onayBekliyorMu ? 'text-amber-400 font-bold' : 'text-purple-300'}`}>
+              <p className={`text-[11px] sm:text-xs truncate ${onayBekliyorMu ? 'text-amber-400 font-bold' : 'text-purple-300'}`}>
                 {onayBekliyorMu
-                  ? '⏳ Başvuru İnceleniyor • Patron Onayı Bekleniyor'
-                  : `${mutfakKonumu} • Onaylı Ev Aşçısı`}
+                  ? '⏳ Patron Onayı Bekleniyor'
+                  : `${mutfakKonumu}`}
               </p>
             </div>
           </div>
 
-          {/* Mutfak Aç/Kapa & Zil & Güvenli Çıkış Butonları */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <MutfakZilButonu />
+          {/* Sağ Alan: Mobilde yalnız büyük Aç/Kapa anahtarı, Masaüstünde Ses + Zil + Aç/Kapa + Çıkış */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden md:flex items-center gap-2">
+              <SesliAsistanButonu />
+              <MutfakZilButonu />
+            </div>
 
             {onayBekliyorMu ? (
               <div
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-950/70 border border-amber-500/50 text-amber-300 select-none shadow-xs"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-950/70 border border-amber-500/50 text-amber-300 select-none shadow-xs"
                 title="Patron onayı tamamlandıktan sonra mutfağınız siparişe açılacaktır"
               >
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -360,14 +480,14 @@ export const MutfakPaneli: React.FC = () => {
               <button
                 type="button"
                 onClick={toggleMutfakDurumu}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
                   mutfakAcik
-                    ? 'bg-emerald-950/80 border border-emerald-500 text-emerald-300 shadow-emerald-900/40 shadow-sm'
-                    : 'bg-rose-950/80 border border-rose-500 text-rose-300'
+                    ? 'bg-emerald-950/90 border border-emerald-500 text-emerald-300 shadow-emerald-900/40 shadow-sm'
+                    : 'bg-rose-950/90 border border-rose-500 text-rose-300'
                 }`}
               >
-                <Power className="w-3.5 h-3.5" />
-                <span>{mutfakAcik ? 'Mutfak Açık' : 'Mutfak Kapalı'}</span>
+                <Power className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <span>{mutfakAcik ? 'Dükkan Açık' : 'Dükkan Kapalı'}</span>
               </button>
             )}
 
@@ -377,7 +497,7 @@ export const MutfakPaneli: React.FC = () => {
                 androidOturumKapatBildir();
                 cikisYap();
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 text-xs font-bold transition-all cursor-pointer"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 text-xs font-bold transition-all cursor-pointer"
               title="Güvenli Çıkış Yap"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -402,90 +522,73 @@ export const MutfakPaneli: React.FC = () => {
           </div>
         )}
 
-        {/* Sekmeler */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar border-b border-purple-950">
+        {/* Masaüstü 4 Ana Sekme (Mobilde aşağıdaki sabit 4'lü bar kullanılır) */}
+        <div className="hidden md:flex items-center gap-2.5 pb-2 border-b border-purple-950">
           <button
             type="button"
             onClick={() => setAktifSekme('siparisler')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap transition-all ${
               aktifSekme === 'siparisler'
                 ? 'bg-[#6D237A] text-white shadow-md'
                 : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
             }`}
           >
             <ShoppingBag className="w-4 h-4 text-amber-400" />
-            <span>Ocak & Fırın ({aktifMutfakSiparisleri.length} Sipariş)</span>
+            <span>Siparişler ({aktifMutfakSiparisleri.length})</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setAktifSekme('menum')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
+            onClick={() => {
+              setAktifSekme('menum');
+              setYemekModalAcik(false);
+              setDuzenlenenYemek(null);
+              setCokluMenuModalAcik(false);
+              setDuzenlenecekCokluMenu(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap transition-all ${
               aktifSekme === 'menum'
                 ? 'bg-[#6D237A] text-white shadow-md'
                 : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
             }`}
           >
             <UtensilsCrossed className="w-4 h-4 text-amber-400" />
-            <span>Tencere Menüm ({mutfakYemekleri.length} Çeşit)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAktifSekme('afis')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
-              aktifSekme === 'afis'
-                ? 'bg-[#6D237A] text-white shadow-md'
-                : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
-            }`}
-          >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Mutfak Afişim</span>
+            <span>Tencere Menüm ({mutfakYemekleri.length + cokluMenuler.length} Çeşit)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setAktifSekme('kazanc')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap transition-all ${
               aktifSekme === 'kazanc'
                 ? 'bg-[#6D237A] text-white shadow-md'
                 : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
             }`}
           >
             <DollarSign className="w-4 h-4 text-amber-400" />
-            <span>Hakediş & Kazancım</span>
+            <span>Kazancım & Geçmiş ({tamamlananVeGecmisSiparisler.length})</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setAktifSekme('tamamlanan')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
-              aktifSekme === 'tamamlanan'
+            onClick={() => setAktifSekme('dukkanim')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap transition-all ${
+              aktifSekme === 'dukkanim'
                 ? 'bg-[#6D237A] text-white shadow-md'
                 : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
             }`}
           >
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
-            <span>Tamamlanan ({tamamlananVeGecmisSiparisler.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAktifSekme('belgeler')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer whitespace-nowrap ${
-              aktifSekme === 'belgeler'
-                ? 'bg-[#6D237A] text-white shadow-md'
-                : 'bg-[#180A1F] text-gray-400 hover:text-white border border-[#3E1646]'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 text-amber-400" />
-            <span>📜 Resmi İzinler & Hijyen / Muafiyet</span>
+            <Store className="w-4 h-4 text-amber-400" />
+            <span>Dükkanım & Ayarlar</span>
           </button>
         </div>
 
         {/* Sekme 1: Aktif Gelen Siparişler */}
         {aktifSekme === 'siparisler' && (
           <div className="space-y-4">
+            {/* Canlı Tencere & Fırın Özeti (Toplu Pişirme Sayacı) */}
+            <MutfakPisirmeOzetiKarti siparisler={aktifMutfakSiparisleri} />
+
             {aktifMutfakSiparisleri.length === 0 ? (
               <div className="py-12 text-center text-gray-400 text-xs bg-[#180A1F] rounded-2xl border border-purple-900/40">
                 <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-amber-400 opacity-50" />
@@ -507,51 +610,225 @@ export const MutfakPaneli: React.FC = () => {
           </div>
         )}
 
-        {/* Sekme: Tamamlanan ve İptal Edilen Sipariş Geçmişi */}
-        {aktifSekme === 'tamamlanan' && (
-          <div className="space-y-4">
-            {tamamlananVeGecmisSiparisler.length === 0 ? (
-              <div className="py-12 text-center text-gray-400 text-xs bg-[#180A1F] rounded-2xl border border-purple-900/40">
-                <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-400 opacity-50" />
-                <p>Henüz tamamlanmış veya geçmiş sipariş bulunmuyor.</p>
-              </div>
-            ) : (
-              tamamlananVeGecmisSiparisler.map((sip) => (
-                <MutfakTekliSiparisKarti
-                  key={sip.id}
-                  siparis={sip}
-                  onYenile={() => {
-                    siparisleriYenile();
-                    setGuncellemeSayaci((s) => s + 1);
-                  }}
-                  onIptalAc={() => {}}
-                />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Sekme 2: Menüm (Ürün Ekleme & Yönetim) */}
+        {/* Sekme 2: Menüm (Liste görünümü veya tam sayfa Yemek / Çoklu Menü Oluşturma sayfaları) */}
         {aktifSekme === 'menum' && (
+          yemekModalAcik ? (
+            <YeniYemekEklePenceresi
+              mutfakId={mutfakId}
+              onKapat={() => {
+                setYemekModalAcik(false);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onEklendi={(yeniYemek) => {
+                setCanliYemekler((prev) => [yeniYemek, ...prev]);
+                setGuncellemeSayaci((s) => s + 1);
+              }}
+            />
+          ) : duzenlenenYemek ? (
+            <YemekDuzenlemePenceresi
+              yemek={duzenlenenYemek}
+              onKapat={() => {
+                setDuzenlenenYemek(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onGuncellendi={() => setGuncellemeSayaci((s) => s + 1)}
+              onSilindi={() => setGuncellemeSayaci((s) => s + 1)}
+            />
+          ) : cokluMenuModalAcik ? (
+            <CokluMenuOlusturPenceresi
+              mutfakId={mutfakId}
+              mutfakAdi={mutfakAdi}
+              duzenlenecekMenu={duzenlenecekCokluMenu}
+              onKapat={() => {
+                setCokluMenuModalAcik(false);
+                setDuzenlenecekCokluMenu(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          ) : (
           <div className="space-y-4">
-            <MutfakTeslimatAyarKarti mutfakId={mutfakId} />
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1 flex-wrap">
-                <div className="relative flex-1 min-w-[200px] max-w-xs">
-                  <Search className="w-3.5 h-3.5 text-purple-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={menuArama}
-                    onChange={(e) => setMenuArama(e.target.value)}
-                    placeholder="Menüde yemek ara..."
-                    className="w-full pl-8 pr-3 py-2 rounded-xl bg-[#180A1F] border border-purple-900/60 text-xs text-white placeholder-gray-500 focus:border-amber-400 outline-none"
-                  />
+            {/* 1. ÖNCELİK: Kaydırmadan ilk ekranda kocaman "+ Yeni Yemek Ekle" ve altında "+ Çoklu Menü Oluştur" */}
+            <div className="flex flex-col gap-3 bg-[#180A1F] border border-purple-900/60 rounded-2xl p-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <h2 className="text-sm font-extrabold text-white">
+                    Tencere Menüm ({mutfakYemekleri.length} Yemek • {cokluMenuler.length} Çoklu Menü)
+                  </h2>
+                  <p className="text-[11px] text-purple-300/80">
+                    Tekli yemek veya 4-15+ çeşitlik özel çoklu menü paketi oluşturabilirsiniz.
+                  </p>
                 </div>
+                <div className="flex flex-col gap-2 w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setYemekModalAcik(true);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="w-full sm:w-auto px-5 py-3.5 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-purple-950 text-sm sm:text-xs font-black flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all active:scale-[0.98]"
+                  >
+                    <Plus className="w-5 h-5 sm:w-4 sm:h-4" />
+                    <span>Yeni Yemek Ekle</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuzenlenecekCokluMenu(null);
+                      setCokluMenuModalAcik(true);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-[#271033] hover:bg-[#351646] border border-amber-500/50 text-amber-300 text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>+ Çoklu Menü Oluştur (Sınırsız Çeşit)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Çoklu Menüler Listesi */}
+            {cokluMenuler.length > 0 && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-black text-amber-300 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-amber-400" />
+                    <span>Çoklu Menülerim ({cokluMenuler.length})</span>
+                  </span>
+                  <span className="text-[11px] text-purple-300/70">
+                    Vitrinde en fazla 6&apos;lı kolaj olarak görünür
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {cokluMenuler.map((menu) => {
+                    const satistaMi = menu.stokta_var_mi !== false && menu.tukendi_mi !== true;
+                    const kalemSayisi = menu.kalemler?.length || 0;
+                    const ornekCesitler = (menu.kalemler || []).slice(0, 4).map((k) => k.ad).join(', ');
+                    return (
+                      <div
+                        key={menu.id}
+                        className={`p-3.5 rounded-2xl bg-[#180A1F] border transition-all flex items-center justify-between gap-3 ${
+                          satistaMi ? 'border-amber-500/35 hover:border-amber-400/70' : 'border-rose-900/60 opacity-85'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <CokluMenuKolajOnizleme
+                            gorseller={menu.kapak_gorselleri}
+                            toplamCesitSayisi={kalemSayisi}
+                            boyutSinifi="w-16 h-16"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="text-sm sm:text-xs font-black text-white truncate">
+                                {menu.baslik}
+                              </h4>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">
+                                {kalemSayisi} Çeşit
+                              </span>
+                            </div>
+                            <p className="text-xs sm:text-[11px] text-gray-300 mt-0.5">
+                              <strong className="text-amber-300">{menu.fiyat} ₺</strong> • {menu.hazirlanma_suresi || '35-45 dk'}
+                            </p>
+                            {ornekCesitler && (
+                              <p className="text-[10px] text-purple-300/80 truncate mt-0.5">
+                                {ornekCesitler}{kalemSayisi > 4 ? ` +${kalemSayisi - 4} diğer` : ''}
+                              </p>
+                            )}
+                            <div className="mt-1.5">
+                              {menu.onay_durumu === 'beklemede' || menu.onayli_mi === false ? (
+                                <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
+                                  ⏳ Patron Onayı Bekliyor
+                                </span>
+                              ) : menu.onay_durumu === 'reddedildi' ? (
+                                <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40">
+                                  ❌ Reddedildi
+                                </span>
+                              ) : (
+                                <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                                  ✅ Vitrinde Yayında
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => cokluMenuHizliStokDegistir(menu)}
+                            disabled={stokDegisenCokluMenuId === menu.id}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                              satistaMi
+                                ? 'bg-emerald-950/70 hover:bg-emerald-900 border-emerald-600/80 text-emerald-300'
+                                : 'bg-rose-950/80 hover:bg-rose-900 border-rose-600 text-rose-300'
+                            }`}
+                          >
+                            {satistaMi ? 'Satışta' : 'Bitti'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDuzenlenecekCokluMenu(menu);
+                              setCokluMenuModalAcik(true);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="px-3 py-1.5 bg-purple-950/80 hover:bg-amber-500 hover:text-purple-950 border border-purple-700/80 text-purple-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>Düzenle</span>
+                          </button>
+                          {silinecekCokluMenuId === menu.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => cokluMenuKaliciSil(menu.id)}
+                                className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[10px] font-black cursor-pointer"
+                              >
+                                Sil
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSilinecekCokluMenuId(null)}
+                                className="px-2 py-1 rounded-lg bg-purple-900 text-gray-200 text-[10px] font-bold cursor-pointer"
+                              >
+                                İptal
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setSilinecekCokluMenuId(menu.id)}
+                              className="px-3 py-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Sil</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Arama ve Kategori Filtresi */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-purple-400 absolute left-3.5 top-3 sm:top-2.5" />
+                <input
+                  type="text"
+                  value={menuArama}
+                  onChange={(e) => setMenuArama(e.target.value)}
+                  placeholder="Menüde yemek ara..."
+                  className="w-full pl-10 pr-3 py-2.5 sm:py-2 rounded-xl bg-[#180A1F] border border-purple-900/60 text-xs text-white placeholder-gray-500 focus:border-amber-400 outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
                 <select
                   value={seciliMenuKategori}
                   onChange={(e) => setSeciliMenuKategori(e.target.value)}
-                  className="px-3 py-2 rounded-xl bg-[#180A1F] border border-purple-900/60 text-xs text-purple-200 outline-none focus:border-amber-400"
+                  className="flex-1 sm:flex-initial px-3 py-2.5 sm:py-2 rounded-xl bg-[#180A1F] border border-purple-900/60 text-xs text-purple-200 outline-none focus:border-amber-400"
                 >
                   {menuKategorileri.map((kat) => (
                     <option key={kat} value={kat} className="bg-[#1D0A20]">
@@ -559,18 +836,10 @@ export const MutfakPaneli: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <span className="text-xs text-purple-300">
-                  {filtrelenmisYemekler.length} / {mutfakYemekleri.length} Çeşit
+                <span className="text-xs text-purple-300 shrink-0 px-1">
+                  {filtrelenmisYemekler.length} / {mutfakYemekleri.length}
                 </span>
               </div>
-
-              <button
-                onClick={() => setYemekModalAcik(true)}
-                className="px-3.5 py-2 rounded-xl bg-[#6D237A] hover:bg-[#852C94] text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Yeni Yemek Ekle</span>
-              </button>
             </div>
 
             {filtrelenmisYemekler.length === 0 ? (
@@ -579,30 +848,37 @@ export const MutfakPaneli: React.FC = () => {
                 <p>Arama kriterine uygun yemek bulunamadı.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {filtrelenmisYemekler.map((yemek) => {
                   const satistaMi = yemek.stokta_var_mi !== false && yemek.tukendi_mi !== true;
+                  const guvenliGorsel = gorselUrlGuvenliYap(yemek.gorsel_url) || logoSrc;
                   return (
                     <div
                       key={yemek.id}
                       className={`p-3.5 rounded-2xl bg-[#180A1F] border transition-all flex items-center justify-between gap-3 group ${
                         satistaMi
                           ? 'border-[#3E1646] hover:border-purple-700'
-                          : 'border-rose-900/60 opacity-80'
+                          : 'border-rose-900/60 opacity-85'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <img
-                          src={gorselUrlGuvenliYap(yemek.gorsel_url)}
+                          src={guvenliGorsel}
                           alt={yemek.baslik}
-                          className="w-16 h-16 rounded-xl object-cover shrink-0 border border-purple-900/60"
+                          onError={(e) => {
+                            const img = e.currentTarget as HTMLImageElement;
+                            if (!img.src.endsWith(logoSrc)) {
+                              img.src = logoSrc;
+                            }
+                          }}
+                          className="w-16 h-16 rounded-xl object-cover shrink-0 border border-purple-900/60 bg-purple-950/50"
                         />
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-bold text-white truncate">{yemek.baslik}</h4>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
+                          <h4 className="text-sm sm:text-xs font-bold text-white truncate">{yemek.baslik}</h4>
+                          <p className="text-xs sm:text-[11px] text-gray-300 mt-0.5">
                             {yemek.birim || 'Porsiyon'}: <strong className="text-amber-300">{yemek.fiyat} ₺</strong> • {yemek.hazirlanma_suresi || '25 dk'}
                           </p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {(yemek as any).onay_durumu === 'beklemede' || (yemek as any).onayli_mi === false ? (
                               <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
                                 ⏳ Patron Onayı Bekliyor
@@ -618,31 +894,34 @@ export const MutfakPaneli: React.FC = () => {
                             )}
                             {yemek.secenek_gruplari && yemek.secenek_gruplari.length > 0 && (
                               <span className="text-[10px] text-amber-300 font-medium">
-                                • {yemek.secenek_gruplari.length} Seçenek Grubu
+                                • {yemek.secenek_gruplari.length} Seçenek
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-1.5 shrink-0">
+                      <div className="flex flex-col gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => yemekHizliStokDegistir(yemek)}
                           disabled={stokDegisenYemekId === yemek.id}
-                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
+                          className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
                             satistaMi
-                              ? 'bg-emerald-950/70 hover:bg-emerald-900 border-emerald-700/70 text-emerald-300'
-                              : 'bg-rose-950/80 hover:bg-rose-900 border-rose-700 text-rose-300'
+                              ? 'bg-emerald-950/70 hover:bg-emerald-900 border-emerald-600/80 text-emerald-300'
+                              : 'bg-rose-950/80 hover:bg-rose-900 border-rose-600 text-rose-300'
                           }`}
-                          title="Tek tıkla satışa aç veya tükendi yap"
+                          title="Tek tıkla satışa aç veya bitti yap"
                         >
-                          {satistaMi ? 'Satışta' : 'Tükendi'}
+                          {satistaMi ? 'Satışta' : 'Bitti'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => setDuzenlenenYemek(yemek)}
-                          className="px-3 py-1.5 bg-purple-950/80 hover:bg-amber-500 hover:text-purple-950 border border-purple-800/80 hover:border-amber-400 text-purple-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
+                          onClick={() => {
+                            setDuzenlenenYemek(yemek);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="px-3.5 py-2 bg-purple-950/80 hover:bg-amber-500 hover:text-purple-950 border border-purple-700/80 hover:border-amber-400 text-purple-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Düzenle</span>
@@ -654,56 +933,103 @@ export const MutfakPaneli: React.FC = () => {
               </div>
             )}
           </div>
+          )
         )}
 
-        {/* Sekme: Mutfak Afişim (Ayrı Modül) */}
-        {aktifSekme === 'afis' && (
-          <MutfakAfisSekmesi
-            mutfakId={mutfakId}
-            mutfakAdi={mutfakAdi}
-          />
-        )}
-
-        {/* Sekme 3: Kazanç & Cüzdan */}
+        {/* Sekme 3: Kazancım & Tamamlanan Geçmiş */}
         {aktifSekme === 'kazanc' && (
-          <MutfakCuzdanSekmesi
-            mutfakId={mutfakId}
-            mutfakAdi={mutfakAdi}
-            toplamSatisTutari={toplamGecerliCiro}
-            kayitliKomisyonTutari={toplamKayitliKomisyon}
-          />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-[#180A1F] border border-purple-900/60">
+              <button
+                type="button"
+                onClick={() => setKazancAltSekme('cuzdan')}
+                className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                  kazancAltSekme === 'cuzdan'
+                    ? 'bg-[#6D237A] text-white shadow'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <DollarSign className="w-4 h-4 text-amber-400" />
+                <span>Cüzdan & Hakediş</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setKazancAltSekme('tamamlanan')}
+                className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                  kazancAltSekme === 'tamamlanan'
+                    ? 'bg-[#6D237A] text-white shadow'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                <span>Geçmiş ({tamamlananVeGecmisSiparisler.length})</span>
+              </button>
+            </div>
+
+            {kazancAltSekme === 'cuzdan' ? (
+              <MutfakCuzdanSekmesi
+                mutfakId={mutfakId}
+                mutfakAdi={mutfakAdi}
+                toplamSatisTutari={toplamGecerliCiro}
+                kayitliKomisyonTutari={toplamKayitliKomisyon}
+              />
+            ) : (
+              <div className="space-y-4">
+                {tamamlananVeGecmisSiparisler.length === 0 ? (
+                  <div className="py-12 text-center text-gray-400 text-xs bg-[#180A1F] rounded-2xl border border-purple-900/40">
+                    <CheckCircle className="w-8 h-8 mx-auto mb-2 text-emerald-400 opacity-50" />
+                    <p>Henüz tamamlanmış veya geçmiş sipariş bulunmuyor.</p>
+                  </div>
+                ) : (
+                  tamamlananVeGecmisSiparisler.map((sip) => (
+                    <MutfakTekliSiparisKarti
+                      key={sip.id}
+                      siparis={sip}
+                      onYenile={() => {
+                        siparisleriYenile();
+                        setGuncellemeSayaci((s) => s + 1);
+                      }}
+                      onIptalAc={() => {}}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         )}
 
-        {/* Sekme 4: Resmi İzinler & Hukuki Belgeler */}
-        {aktifSekme === 'belgeler' && (
-          <MutfakBelgelerSekmesi
+        {/* Sekme 4: Dükkanım (Ayarlar, Afiş, Belgeler, Ses ve Çıkış) */}
+        {aktifSekme === 'dukkanim' && (
+          <MutfakDukkanimSekmesi
             mutfakId={mutfakId}
             mutfakAdi={mutfakAdi}
+            mutfakKaydi={mutfakKaydi}
+            mutfakAcik={mutfakAcik}
+            onMutfakDurumuDegistir={setMutfakAcik}
+            onCikisYap={() => {
+              androidOturumKapatBildir();
+              cikisYap();
+            }}
           />
         )}
       </main>
 
-      {/* Yeni Yemek Ekleme Penceresi */}
-      {yemekModalAcik && (
-        <YeniYemekEklePenceresi
-          mutfakId={mutfakId}
-          onKapat={() => setYemekModalAcik(false)}
-          onEklendi={(yeniYemek) => {
-            setCanliYemekler((prev) => [yeniYemek, ...prev]);
-            setGuncellemeSayaci((s) => s + 1);
-          }}
-        />
-      )}
-
-      {/* Mevcut Yemeği Düzenleme Penceresi */}
-      {duzenlenenYemek && (
-        <YemekDuzenlemePenceresi
-          yemek={duzenlenenYemek}
-          onKapat={() => setDuzenlenenYemek(null)}
-          onGuncellendi={() => setGuncellemeSayaci((s) => s + 1)}
-          onSilindi={() => setGuncellemeSayaci((s) => s + 1)}
-        />
-      )}
+      {/* Mobilde Sabit 4 Büyük Alt Sekme Barı */}
+      <MutfakAltNavigasyon
+        aktifSekme={aktifSekme}
+        onSekmeSec={(sekme) => {
+          setAktifSekme(sekme);
+          if (sekme === 'menum') {
+            setYemekModalAcik(false);
+            setDuzenlenenYemek(null);
+            setCokluMenuModalAcik(false);
+            setDuzenlenecekCokluMenu(null);
+          }
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        aktifSiparisSayisi={aktifMutfakSiparisleri.length}
+        yemekSayisi={mutfakYemekleri.length + cokluMenuler.length}
+      />
 
       {/* Sipariş İptal Modalı */}
       {iptalModalSiparis && (

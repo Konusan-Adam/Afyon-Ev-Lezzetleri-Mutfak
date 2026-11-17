@@ -46,6 +46,37 @@ export interface YemekTipi {
   onayli_mi?: boolean;
 }
 
+export interface CokluMenuKalemiTipi {
+  id: string;
+  sira: number;
+  ad: string;
+  aciklama: string;
+  fiyat: number;
+  gorsel_url: string;
+  not_izinli_mi?: boolean;
+  varsayilan_secili?: boolean;
+  zorunlu_mu?: boolean;
+}
+
+export interface CokluMenuTipi {
+  id: string;
+  mutfak_id: string;
+  mutfak_adi?: string;
+  baslik: string;
+  aciklama?: string;
+  fiyat_tipi: 'paket' | 'kalem_toplam';
+  fiyat: number;
+  hazirlanma_suresi?: string;
+  kapak_gorselleri: string[];
+  kalemler: CokluMenuKalemiTipi[];
+  stokta_var_mi?: boolean;
+  tukendi_mi?: boolean;
+  onay_durumu?: string;
+  onayli_mi?: boolean;
+  olusturma_tarihi?: string;
+  guncellenme_tarihi?: string;
+}
+
 export interface KategoriTipi {
   id: string;
   ad: string;

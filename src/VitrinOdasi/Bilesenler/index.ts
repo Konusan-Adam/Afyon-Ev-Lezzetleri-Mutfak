@@ -2,5 +2,8 @@ export * from './YemekSecenekDuzenleyici';
 export * from './TezgahBildirimCubugu';
 export * from './Mutfak/MutfakZilButonu';
 export * from './Mutfak/MutfakYeniSiparisUyarisi';
+export * from './Mutfak/MutfakSiparisIptalUyarisi';
 export * from './Mutfak/MutfakTekliSiparisKarti';
+export * from './Mutfak/MutfakPisirmeOzetiKarti';
+export * from './Mutfak/SesliAsistanButonu';
 export * from './MutfakYonetimi/SiparisIptalPenceresi';
