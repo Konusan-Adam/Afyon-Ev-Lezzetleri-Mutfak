@@ -72,8 +72,8 @@ export const YeniYemekEklePenceresi: React.FC<YeniYemekEklePenceresiOzellikleri>
       aciklama: aciklama.trim() || 'Anne eliyle taze pişirilmiş Afyon ev lezzeti.',
       fiyat: Number(fiyat),
       birim: birim || 'Porsiyon',
-      gunluk_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
-      kalan_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
+      gunluk_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : (null as any),
+      kalan_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : (null as any),
       sinirsiz_stok: stokTipi === 'sinirsiz',
       kategori,
       alt_kategori: altKategori ? altKategori.trim() : '',
@@ -85,7 +85,8 @@ export const YeniYemekEklePenceresi: React.FC<YeniYemekEklePenceresiOzellikleri>
       tukendi_mi: false,
       onay_durumu: 'beklemede', // Admin onayı bekliyor!
       onayli_mi: false,
-      secenek_gruplari: secenekGruplari || []
+      secenek_gruplari: secenekGruplari || [],
+      guncellenme_zamani: new Date().toISOString()
     };
 
     if (stokTipi === 'sinirli') {

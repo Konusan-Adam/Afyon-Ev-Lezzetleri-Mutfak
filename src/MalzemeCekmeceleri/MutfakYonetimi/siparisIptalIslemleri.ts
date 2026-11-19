@@ -2,6 +2,7 @@ import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
 import { belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
 import { yerelSiparisDurumGuncelle } from '@/src/MalzemeCekmeceleri/useMusteriSiparisleri';
+import { siparisStokIadeUygula } from '@/src/MalzemeCekmeceleri/Mutfak/gunlukStokIslemleri';
 
 export async function siparisIptalEt(siparisKimligi: string, gerekceBaslik: string, detayNot?: string): Promise<boolean> {
   const aciklamaMetni = detayNot && detayNot.trim()
@@ -11,9 +12,10 @@ export async function siparisIptalEt(siparisKimligi: string, gerekceBaslik: stri
   // 1. Yerel depolama ve localStorage güncellemesi
   yerelSiparisDurumGuncelle(siparisKimligi, 'iptal', aciklamaMetni);
 
-  // 2. Canlı Firebase güncellemesi
+  // 2. Canlı Firebase güncellemesi ve stok iadesi
   if (canliFirebaseAktifMi()) {
     try {
+      await siparisStokIadeUygula(siparisKimligi);
       await belgeKaydet('siparisler', siparisKimligi, {
         durum: 'iptal',
         asama: 'iptal',

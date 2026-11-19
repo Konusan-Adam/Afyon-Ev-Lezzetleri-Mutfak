@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, UtensilsCrossed, Wallet, Store } from 'lucide-react';
+import { ShoppingBag, UtensilsCrossed, Wallet, Store, Coffee } from 'lucide-react';
 
 export type MutfakAnaSekme = 'siparisler' | 'menum' | 'kazanc' | 'dukkanim';
 
@@ -8,6 +8,8 @@ interface MutfakAltNavigasyonProps {
   onSekmeSec: (sekme: MutfakAnaSekme) => void;
   aktifSiparisSayisi: number;
   yemekSayisi: number;
+  onMolaAc?: () => void;
+  molaAktifMi?: boolean;
 }
 
 export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
@@ -15,6 +17,8 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
   onSekmeSec,
   aktifSiparisSayisi,
   yemekSayisi,
+  onMolaAc,
+  molaAktifMi = false,
 }) => {
   const ogeler: Array<{
     id: MutfakAnaSekme;
@@ -53,7 +57,7 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
       aria-label="Mutfak Mobil Menü"
       className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#14051A]/95 backdrop-blur-md border-t border-purple-900/70 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]"
     >
-      <div className="grid grid-cols-4 gap-1 px-2 py-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
+      <div className="grid grid-cols-5 gap-1 px-1.5 py-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
         {ogeler.map((oge) => {
           const secili = aktifSekme === oge.id;
           return (
@@ -81,12 +85,27 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
                   </span>
                 )}
               </div>
-              <span className={`text-[11px] leading-tight ${secili ? 'font-extrabold' : 'font-semibold'}`}>
+              <span className={`text-[10px] leading-tight truncate max-w-full ${secili ? 'font-extrabold' : 'font-semibold'}`}>
                 {oge.etiket}
               </span>
             </button>
           );
         })}
+
+        <button
+          type="button"
+          onClick={onMolaAc}
+          className={`relative flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-2xl transition-all cursor-pointer min-h-[58px] ${
+            molaAktifMi
+              ? 'bg-amber-500/25 border border-amber-400 text-amber-300 shadow-lg shadow-amber-950/50 animate-pulse'
+              : 'text-amber-300/90 hover:text-amber-200 active:bg-purple-950/60'
+          }`}
+        >
+          <Coffee className="w-5 h-5" />
+          <span className="text-[10px] leading-tight font-bold truncate max-w-full">
+            {molaAktifMi ? 'Molada' : 'Mola Ver'}
+          </span>
+        </button>
       </div>
     </nav>
   );

@@ -7,12 +7,12 @@ import {
   LogOut,
   ChevronDown,
   ChevronUp,
-  Smartphone,
-  Download,
+  Star,
 } from 'lucide-react';
 import { MutfakTeslimatAyarKarti } from './MutfakTeslimatAyarKarti';
 import { MutfakAfisSekmesi } from './MutfakAfisSekmesi';
 import { MutfakBelgelerSekmesi } from './MutfakBelgelerSekmesi';
+import { MutfakYorumlarSekmesi } from './MutfakYorumlarSekmesi';
 import { MutfakZilButonu } from '../Bilesenler/Mutfak/MutfakZilButonu';
 import { SesliAsistanButonu } from '../Bilesenler/Mutfak/SesliAsistanButonu';
 
@@ -25,7 +25,7 @@ interface MutfakDukkanimSekmesiProps {
   onCikisYap: () => void;
 }
 
-type DukkanBolumu = 'ayarlar' | 'afis' | 'belgeler';
+type DukkanBolumu = 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
 
 export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
   mutfakId,
@@ -159,33 +159,35 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
         )}
       </div>
 
-      {/* 4. Android Mutfak Uygulaması (APK v2.1.0) İndir */}
-      <div className="rounded-2xl bg-[#180A1F] border border-amber-500/40 p-4 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-            <Smartphone className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white">Android Mutfak Uygulaması</h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
-                v2.1.0 Güncel
-              </span>
-            </div>
-            <p className="text-[11px] text-gray-400 mt-0.5 truncate">
-              Ekran açık tutma, zil alarmı ve arka plan sipariş bildirimleri
-            </p>
-          </div>
-        </div>
-
-        <a
-          href="/afyon-mutfak.apk"
-          download="afyon-mutfak.apk"
-          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-purple-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 shrink-0 cursor-pointer"
+      {/* 4. Müşteri Yorumları & Puanlarım */}
+      <div className="rounded-2xl bg-[#180A1F] border border-purple-900/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => bolumDegistir('yorumlar')}
+          className="w-full px-4 py-4 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-purple-950/30 transition-colors"
         >
-          <Download className="w-4 h-4" />
-          <span>APK İndir</span>
-        </a>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+              <Star className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white">Müşteri Yorumları & Puanlarım</h3>
+              <p className="text-[11px] text-gray-400 truncate">
+                Müşteri değerlendirmelerini okuyun ve teşekkür cevabı yazın
+              </p>
+            </div>
+          </div>
+          {acikBolum === 'yorumlar' ? (
+            <ChevronUp className="w-5 h-5 text-purple-300 shrink-0" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-purple-300 shrink-0" />
+          )}
+        </button>
+        {acikBolum === 'yorumlar' && (
+          <div className="px-4 pb-4 pt-3 border-t border-purple-900/40">
+            <MutfakYorumlarSekmesi mutfakId={mutfakId} mutfakAdi={mutfakAdi} />
+          </div>
+        )}
       </div>
 
       {/* Güvenli Çıkış (Yanlışlıkla basılmasın diye en altta ve onaylı) */}

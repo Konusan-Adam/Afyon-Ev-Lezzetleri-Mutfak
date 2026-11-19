@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingBag,
   UtensilsCrossed,
@@ -13,7 +13,11 @@ import {
   Search,
   Store,
   Layers,
-  Trash2
+  Trash2,
+  Coffee,
+  Package,
+  Flame,
+  AlertTriangle
 } from 'lucide-react';
 import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
 import { Yemek, CokluMenuTipi } from '@/src/veritabani/VeriTipleri';
@@ -48,6 +52,13 @@ import { MutfakYeniSiparisUyarisi } from '../Bilesenler/Mutfak/MutfakYeniSiparis
 import { MutfakSiparisIptalUyarisi } from '../Bilesenler/Mutfak/MutfakSiparisIptalUyarisi';
 import { MutfakGirisEkrani } from './MutfakGirisEkrani';
 import { ApkGuncellemeUyarisi } from './ApkGuncellemeUyarisi';
+import { GunlukStokPlanlayiciPenceresi } from './GunlukStokPlanlayiciPenceresi';
+import { MutfakMolaPenceresi } from './MutfakMolaPenceresi';
+import {
+  yemekStokVeMinSepetAnalizEt,
+  siparisStokDusumuUygula,
+  siparisStokIadeUygula,
+} from '@/src/MalzemeCekmeceleri/Mutfak/gunlukStokIslemleri';
 
 const VARSAYILAN_TEST_MUTFAKLARI = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1', 'm2', 'mutfak-muzaffer'];
 const M1_ESLESEN_KIMLIKLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
@@ -102,6 +113,10 @@ export const MutfakPaneli: React.FC = () => {
   const [duzenlenecekCokluMenu, setDuzenlenecekCokluMenu] = useState<CokluMenuTipi | null>(null);
   const [stokDegisenCokluMenuId, setStokDegisenCokluMenuId] = useState<string | null>(null);
   const [silinecekCokluMenuId, setSilinecekCokluMenuId] = useState<string | null>(null);
+  const [stokPlanlayiciAcik, setStokPlanlayiciAcik] = useState(false);
+  const [molaModalAcik, setMolaModalAcik] = useState(false);
+  const islenenStokSiparisleriRef = useRef<Set<string>>(new Set());
+  const iadeEdilenStokSiparisleriRef = useRef<Set<string>>(new Set());
 
   const { siparisler: canliSiparisler, yenile: siparisleriYenile } = useMusteriSiparisleri();
 
@@ -282,6 +297,49 @@ export const MutfakPaneli: React.FC = () => {
   }, [buMutfaginCanliSiparisleri, tamamlananKoleksiyonSiparisleri]);
 
   const mutfakYemekleri = canliYemekler;
+  const minSiparisTutari = Number(mutfakKaydi?.min_siparis_tutari ?? 100);
+
+  const kritikStokSayisi = useMemo(() => {
+    return mutfakYemekleri.filter((y) => {
+      const analiz = yemekStokVeMinSepetAnalizEt(y, minSiparisTutari);
+      return analiz.kritikAzMi || analiz.minSepetAltindaMi;
+    }).length;
+  }, [mutfakYemekleri, minSiparisTutari]);
+
+  // Gelen siparişlere göre günlük kalan stoğu otomatik düşür, iptalde geri iade et
+  useEffect(() => {
+    if (!oturumYetkiliMi || mutfakYemekleri.length === 0 || buMutfaginCanliSiparisleri.length === 0) {
+      return;
+    }
+
+    buMutfaginCanliSiparisleri.forEach((sip) => {
+      if (!sip?.id) return;
+
+      if (
+        sip.durum !== 'iptal' &&
+        sip.durum !== 'teslim_edildi' &&
+        sip.stok_dusuldu_mu !== true &&
+        !islenenStokSiparisleriRef.current.has(sip.id)
+      ) {
+        islenenStokSiparisleriRef.current.add(sip.id);
+        siparisStokDusumuUygula(sip, mutfakYemekleri).catch(() => {
+          islenenStokSiparisleriRef.current.delete(sip.id);
+        });
+      }
+
+      if (
+        sip.durum === 'iptal' &&
+        sip.stok_dusuldu_mu === true &&
+        sip.stok_iade_edildi_mi !== true &&
+        !iadeEdilenStokSiparisleriRef.current.has(sip.id)
+      ) {
+        iadeEdilenStokSiparisleriRef.current.add(sip.id);
+        siparisStokIadeUygula(sip.id).catch(() => {
+          iadeEdilenStokSiparisleriRef.current.delete(sip.id);
+        });
+      }
+    });
+  }, [oturumYetkiliMi, buMutfaginCanliSiparisleri, mutfakYemekleri]);
 
   const menuKategorileri = useMemo(() => {
     const set = new Set<string>(['Tümü']);
@@ -317,13 +375,16 @@ export const MutfakPaneli: React.FC = () => {
           );
         }
         const hedefId = mutfak?.id || mutfak?.kimlik || mutfakId;
+        const guncellemeVerisi = yeniDurum
+          ? { acik_mi: true, mola_durumu: false, mola_bitis_zamani: null }
+          : { acik_mi: false };
 
         await belgeKaydet(
           'mutfaklar',
           hedefId,
           mutfak
-            ? { acik_mi: yeniDurum }
-            : { id: hedefId, ad: mutfakAdi, acik_mi: yeniDurum }
+            ? guncellemeVerisi
+            : { id: hedefId, ad: mutfakAdi, ...guncellemeVerisi }
         );
       } catch (err) {
         console.warn('Mutfak durum güncelleme hatası:', err);
@@ -337,11 +398,15 @@ export const MutfakPaneli: React.FC = () => {
     setStokDegisenYemekId(yemek.id);
 
     try {
+      const guncelleme: any = {
+        stokta_var_mi: yeniSatista,
+        tukendi_mi: !yeniSatista,
+      };
+      if (yeniSatista && yemek.sinirsiz_stok !== true && typeof yemek.gunluk_stok === 'number' && Number(yemek.kalan_stok ?? 0) <= 0) {
+        guncelleme.kalan_stok = Math.max(1, Number(yemek.gunluk_stok));
+      }
       if (canliFirebaseAktifMi()) {
-        await belgeKaydet('yemekler', yemek.id, {
-          stokta_var_mi: yeniSatista,
-          tukendi_mi: !yeniSatista,
-        });
+        await belgeKaydet('yemekler', yemek.id, guncelleme);
       }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('afyon_yemekler_guncellendi'));
@@ -487,7 +552,13 @@ export const MutfakPaneli: React.FC = () => {
                 }`}
               >
                 <Power className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-                <span>{mutfakAcik ? 'Dükkan Açık' : 'Dükkan Kapalı'}</span>
+                <span>
+                  {mutfakAcik
+                    ? 'Dükkan Açık'
+                    : mutfakKaydi?.mola_durumu
+                    ? 'Molada'
+                    : 'Dükkan Kapalı'}
+                </span>
               </button>
             )}
 
@@ -581,11 +652,50 @@ export const MutfakPaneli: React.FC = () => {
             <Store className="w-4 h-4 text-amber-400" />
             <span>Dükkanım & Ayarlar</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setMolaModalAcik(true)}
+            className={`ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold cursor-pointer whitespace-nowrap transition-all border ${
+              mutfakKaydi?.mola_durumu === true
+                ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md'
+                : 'bg-[#180A1F] hover:bg-[#240D2E] border-[#3E1646] text-amber-300'
+            }`}
+          >
+            <Coffee className="w-4 h-4 text-amber-400" />
+            <span>{mutfakKaydi?.mola_durumu === true ? 'Molada • Yönet' : 'Mola Ver'}</span>
+          </button>
         </div>
 
         {/* Sekme 1: Aktif Gelen Siparişler */}
         {aktifSekme === 'siparisler' && (
           <div className="space-y-4">
+            {/* Aktif Mola Uyarısı */}
+            {mutfakKaydi?.mola_durumu === true && (
+              <div className="bg-amber-500/15 border border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                    <Coffee className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-amber-300">Mutfağınız Şu An Dinlenme / Mola Modunda</p>
+                    <p className="text-[11px] text-amber-200/80">
+                      {mutfakKaydi?.mola_bitis_zamani
+                        ? `Tahmini bitiş: ${new Date(mutfakKaydi.mola_bitis_zamani).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} • Yeni siparişler duraklatıldı.`
+                        : 'Yeni sipariş alımı geçici olarak duraklatıldı.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMolaModalAcik(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-purple-950 font-black text-xs cursor-pointer shrink-0 transition-all"
+                >
+                  Molayı Yönet / Bitir
+                </button>
+              </div>
+            )}
+
             {/* Canlı Tencere & Fırın Özeti (Toplu Pişirme Sayacı) */}
             <MutfakPisirmeOzetiKarti siparisler={aktifMutfakSiparisleri} />
 
@@ -599,6 +709,7 @@ export const MutfakPaneli: React.FC = () => {
                 <MutfakTekliSiparisKarti
                   key={sip.id}
                   siparis={sip}
+                  mutfakAdi={mutfakAdi}
                   onYenile={() => {
                     siparisleriYenile();
                     setGuncellemeSayaci((s) => s + 1);
@@ -681,6 +792,19 @@ export const MutfakPaneli: React.FC = () => {
                   >
                     <Layers className="w-4 h-4 text-amber-400" />
                     <span>+ Çoklu Menü Oluştur (Sınırsız Çeşit)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStokPlanlayiciAcik(true)}
+                    className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-xl bg-[#1E0B27] hover:bg-[#2D103A] border border-purple-700/70 text-purple-100 text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    <Package className="w-4 h-4 text-amber-400" />
+                    <span>Günlük Stok &amp; Kota Planla</span>
+                    {kritikStokSayisi > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-purple-950 text-[10px] font-black">
+                        {kritikStokSayisi}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -850,7 +974,8 @@ export const MutfakPaneli: React.FC = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {filtrelenmisYemekler.map((yemek) => {
-                  const satistaMi = yemek.stokta_var_mi !== false && yemek.tukendi_mi !== true;
+                  const stokAnalizi = yemekStokVeMinSepetAnalizEt(yemek, minSiparisTutari);
+                  const satistaMi = yemek.stokta_var_mi !== false && yemek.tukendi_mi !== true && !stokAnalizi.tukendiMi;
                   const guvenliGorsel = gorselUrlGuvenliYap(yemek.gorsel_url) || logoSrc;
                   return (
                     <div
@@ -878,7 +1003,7 @@ export const MutfakPaneli: React.FC = () => {
                           <p className="text-xs sm:text-[11px] text-gray-300 mt-0.5">
                             {yemek.birim || 'Porsiyon'}: <strong className="text-amber-300">{yemek.fiyat} ₺</strong> • {yemek.hazirlanma_suresi || '25 dk'}
                           </p>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                             {(yemek as any).onay_durumu === 'beklemede' || (yemek as any).onayli_mi === false ? (
                               <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
                                 ⏳ Patron Onayı Bekliyor
@@ -890,6 +1015,31 @@ export const MutfakPaneli: React.FC = () => {
                             ) : (
                               <span className="inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
                                 ✅ Vitrinde Yayında
+                              </span>
+                            )}
+                            {stokAnalizi.sinirliMi && (
+                              stokAnalizi.tukendiMi ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-950/90 text-rose-200 font-extrabold border border-rose-500/50">
+                                  ⛔ Stok Tükendi (0/{stokAnalizi.gunlukStok})
+                                </span>
+                              ) : stokAnalizi.kritikAzMi ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-300 font-black border border-amber-400/60">
+                                  <Flame className="w-3 h-3 text-amber-400" />
+                                  <span>{stokAnalizi.sonKaldiMetni}!</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-900/70 text-purple-200 font-bold border border-purple-700/50">
+                                  📦 Kalan: {stokAnalizi.kalanStok}/{stokAnalizi.gunlukStok} {stokAnalizi.birim}
+                                </span>
+                              )
+                            )}
+                            {stokAnalizi.minSepetAltindaMi && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-orange-950/90 text-orange-200 font-bold border border-orange-500/50"
+                                title={`Tek başına min. ${stokAnalizi.minSepetTutari} ₺ sepete ulaşmaz (+${stokAnalizi.eksikSepetTutari} ₺ gerekir)`}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-orange-400 shrink-0" />
+                                <span>Kalan {stokAnalizi.kalanToplamDeger} ₺ (&lt; Min. {stokAnalizi.minSepetTutari} ₺)</span>
                               </span>
                             )}
                             {yemek.secenek_gruplari && yemek.secenek_gruplari.length > 0 && (
@@ -985,6 +1135,7 @@ export const MutfakPaneli: React.FC = () => {
                     <MutfakTekliSiparisKarti
                       key={sip.id}
                       siparis={sip}
+                      mutfakAdi={mutfakAdi}
                       onYenile={() => {
                         siparisleriYenile();
                         setGuncellemeSayaci((s) => s + 1);
@@ -1014,7 +1165,7 @@ export const MutfakPaneli: React.FC = () => {
         )}
       </main>
 
-      {/* Mobilde Sabit 4 Büyük Alt Sekme Barı */}
+      {/* Mobilde Sabit 5 Büyük Alt Sekme Barı */}
       <MutfakAltNavigasyon
         aktifSekme={aktifSekme}
         onSekmeSec={(sekme) => {
@@ -1029,6 +1180,8 @@ export const MutfakPaneli: React.FC = () => {
         }}
         aktifSiparisSayisi={aktifMutfakSiparisleri.length}
         yemekSayisi={mutfakYemekleri.length + cokluMenuler.length}
+        onMolaAc={() => setMolaModalAcik(true)}
+        molaAktifMi={mutfakKaydi?.mola_durumu === true}
       />
 
       {/* Sipariş İptal Modalı */}
@@ -1041,6 +1194,25 @@ export const MutfakPaneli: React.FC = () => {
             siparisleriYenile();
             setGuncellemeSayaci((s) => s + 1);
           }}
+        />
+      )}
+
+      {/* Günlük Stok & Kota Planlayıcı Modalı */}
+      {stokPlanlayiciAcik && (
+        <GunlukStokPlanlayiciPenceresi
+          yemekler={mutfakYemekleri}
+          mutfakAdi={mutfakAdi}
+          minSiparisTutari={minSiparisTutari}
+          onKapat={() => setStokPlanlayiciAcik(false)}
+        />
+      )}
+
+      {/* Mutfak Dinlenme / Mola Modu Modalı */}
+      {molaModalAcik && (
+        <MutfakMolaPenceresi
+          mutfakId={mutfakId}
+          mutfakKaydi={mutfakKaydi}
+          onKapat={() => setMolaModalAcik(false)}
         />
       )}
     </div>

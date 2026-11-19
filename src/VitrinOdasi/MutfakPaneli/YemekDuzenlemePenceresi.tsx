@@ -70,26 +70,35 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
     }
 
     setKaydediliyor(true);
+    const yeniMiktar = Math.max(1, Number(gunlukStok) || 10);
+    const kalanKorunacakMi =
+      stokTipi === 'sinirli' &&
+      typeof yemek.kalan_stok === 'number' &&
+      Number(yemek.gunluk_stok) === yeniMiktar;
+    const hedefKalan = kalanKorunacakMi
+      ? Math.max(0, Math.min(yeniMiktar, Number(yemek.kalan_stok)))
+      : yeniMiktar;
+
     const guncelVeri = {
       baslik: baslik.trim(),
       aciklama: aciklama.trim(),
       fiyat: Number(fiyat),
       birim: birim || 'Porsiyon',
-      gunluk_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
-      kalan_stok: stokTipi === 'sinirli' ? (Number(gunlukStok) || 10) : undefined,
+      gunluk_stok: stokTipi === 'sinirli' ? yeniMiktar : (null as any),
+      kalan_stok: stokTipi === 'sinirli' ? hedefKalan : (null as any),
       sinirsiz_stok: stokTipi === 'sinirsiz',
-      stokta_var_mi: satistaMi,
-      tukendi_mi: !satistaMi,
+      stokta_var_mi: stokTipi === 'sinirli' ? satistaMi && hedefKalan > 0 : satistaMi,
+      tukendi_mi: stokTipi === 'sinirli' ? !satistaMi || hedefKalan <= 0 : !satistaMi,
       kategori,
       alt_kategori: altKategori || '',
       hazirlanma_suresi: hazirlanmaSuresi,
       gorsel_url: gorselUrl.trim() || yemek.gorsel_url,
-      secenek_gruplari: secenekGruplari
+      secenek_gruplari: secenekGruplari,
+      guncellenme_zamani: new Date().toISOString()
     };
 
     if (stokTipi === 'sinirli') {
-      const miktar = Number(gunlukStok) || 10;
-      porsiyonBelirle(yemek.id, miktar, miktar, birim, false);
+      porsiyonBelirle(yemek.id, yeniMiktar, hedefKalan, birim, false);
     } else {
       porsiyonBelirle(yemek.id, 999, 999, birim, true);
     }
@@ -288,7 +297,7 @@ export const YemekDuzenlemePenceresi: React.FC<YemekDuzenlemePenceresiProps> = (
                 />
                 <span className="text-amber-300 font-bold text-xs">{birim}</span>
                 <span className="text-gray-500 text-[10px] ml-auto">
-                  (3 {birim.toLowerCase()} kaldığında kartta acil rozeti görünür)
+                  (5 {birim.toLowerCase()} kaldığında vitrinde &ldquo;Son X Kaldı&rdquo; rozeti görünür)
                 </span>
               </div>
             ) : (

@@ -7,7 +7,10 @@
       "properties": {
         "kimlik": { "type": "string" },
         "isletme_adi": { "type": "string" },
-        "acik_mi": { "type": "boolean" }
+        "acik_mi": { "type": "boolean" },
+        "min_siparis_tutari": { "type": "number" },
+        "mola_durumu": { "type": "boolean" },
+        "mola_bitis_zamani": { "type": "string" }
       }
     },
     "Yemek": {
@@ -18,7 +21,13 @@
         "id": { "type": "string" },
         "baslik": { "type": "string" },
         "fiyat": { "type": "number" },
-        "mutfak_id": { "type": "string" }
+        "birim": { "type": "string" },
+        "mutfak_id": { "type": "string" },
+        "gunluk_stok": { "type": "number" },
+        "kalan_stok": { "type": "number" },
+        "sinirsiz_stok": { "type": "boolean" },
+        "stokta_var_mi": { "type": "boolean" },
+        "tukendi_mi": { "type": "boolean" }
       }
     },
     "Siparis": {
@@ -28,7 +37,9 @@
       "properties": {
         "id": { "type": "string" },
         "durum": { "type": "string" },
-        "toplam_tutar": { "type": "number" }
+        "toplam_tutar": { "type": "number" },
+        "stok_dusuldu_mu": { "type": "boolean" },
+        "stok_iade_edildi_mi": { "type": "boolean" }
       }
     },
     "CokluMenu": {

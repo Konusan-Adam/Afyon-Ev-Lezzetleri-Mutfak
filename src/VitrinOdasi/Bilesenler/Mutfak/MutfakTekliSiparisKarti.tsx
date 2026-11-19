@@ -15,7 +15,8 @@ import {
   PlusCircle,
   Flame,
   Check,
-  Volume2
+  Volume2,
+  Printer
 } from 'lucide-react';
 import { 
   mutfakSiparisDurumuGuncelle, 
@@ -26,15 +27,19 @@ import {
   mutfakSesliAnonsYap,
   mutfakAnonsHafizasiniTemizle
 } from '@/src/MalzemeCekmeceleri/Mutfak/MutfakSesliAsistanServisi';
+import { MutfakKuryeKarti } from '@/src/VitrinOdasi/MutfakPaneli/MutfakKuryeKarti';
+import { MutfakSiparisFisiPenceresi } from '@/src/VitrinOdasi/MutfakPaneli/MutfakSiparisFisiPenceresi';
 
 export interface MutfakTekliSiparisKartiProps {
   siparis: any;
+  mutfakAdi?: string;
   onYenile: () => void;
   onIptalAc: (sip: { id: string; kodu: string }) => void;
 }
 
 export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = ({
   siparis,
+  mutfakAdi,
   onYenile,
   onIptalAc,
 }) => {
@@ -42,6 +47,7 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
   const [ekSureEkleniyor, setEkSureEkleniyor] = useState(false);
   const [ekSureBilgisi, setEkSureBilgisi] = useState<string | null>(null);
   const [secilenSure, setSecilenSure] = useState(25);
+  const [fisPenceresiAcik, setFisPenceresiAcik] = useState(false);
 
   const siparisId = siparis.id;
   const siparisKodu = siparis.siparis_kodu || siparis.siparisKodu || siparis.id?.substring(0, 8);
@@ -52,6 +58,9 @@ export const MutfakTekliSiparisKarti: React.FC<MutfakTekliSiparisKartiProps> = (
   const toplamTutar = Number(siparis.toplam_tutar || siparis.toplamTutar || siparis.tutar || 0);
   const durum = siparis.durum || 'beklemede';
   const siparisNotu = siparis.not || siparis.siparis_notu || siparis.adresNotu || siparis.ozelNot;
+
+  const kuryeAdi = siparis.kurye_adi || siparis.kuryeAdi || siparis.kurye?.ad_soyad || siparis.kurye?.ad;
+  const kuryeTelefon = siparis.kurye_telefon || siparis.kuryeTelefon || siparis.kurye?.telefon;
 
 // Her türlü tarih biçimini (ISO, Firebase Timestamp, Türkçe GG.AA.YYYY veya milisaniye) güvenle çözen fonksiyon
 function guvenliZamanMs(veri: any): number {
@@ -406,6 +415,18 @@ function guvenliZamanMs(veri: any): number {
         </div>
       )}
 
+      {/* 🛵 Atanan Kurye Bilgi Kartı */}
+      {(kuryeAdi || kuryeTelefon) && (
+        <div className="mt-2.5">
+          <MutfakKuryeKarti
+            kuryeAdi={kuryeAdi}
+            kuryeTelefon={kuryeTelefon}
+            durum={durum}
+            tahminiDakika={siparis.kurye_tahmini_dakika || siparis.tahmini_varis_dakika}
+          />
+        </div>
+      )}
+
       {/* Yemek Öğeleri Listesi */}
       <div className="my-3 space-y-1.5 bg-[#120617] p-3 rounded-xl border border-purple-950">
         {urunler.length === 0 ? (
@@ -449,13 +470,24 @@ function guvenliZamanMs(veri: any): number {
         )
       ) : (
         <div className="pt-2.5 flex items-center justify-between gap-3 flex-wrap border-t border-purple-900/40">
-          <button
-            onClick={() => onIptalAc({ id: siparisId, kodu: siparisKodu })}
-            disabled={islemde}
-            className="px-3.5 py-2.5 rounded-xl border border-red-900/50 bg-red-950/30 hover:bg-red-900/50 text-red-300 text-xs font-bold transition-all cursor-pointer"
-          >
-            İptal Et
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onIptalAc({ id: siparisId, kodu: siparisKodu })}
+              disabled={islemde}
+              className="px-3 py-2 rounded-xl border border-red-900/50 bg-red-950/30 hover:bg-red-900/50 text-red-300 text-xs font-bold transition-all cursor-pointer"
+            >
+              İptal Et
+            </button>
+            <button
+              type="button"
+              onClick={() => setFisPenceresiAcik(true)}
+              className="px-3 py-2 rounded-xl bg-[#26102E] hover:bg-[#34163E] border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              title="80mm Termal Mutfak Fişi Yazdır"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-400" />
+              <span>Fiş Yazdır</span>
+            </button>
+          </div>
 
           <div className="flex items-center gap-2.5 ml-auto flex-wrap">
             {/* ➕ Ek Süre İste Butonu (Ocakta / Hazırlanıyorken) */}
@@ -537,6 +569,15 @@ function guvenliZamanMs(veri: any): number {
             )}
           </div>
         </div>
+      )}
+
+      {/* 🖨️ Mutfak Sipariş & Poşet Fişi Penceresi */}
+      {fisPenceresiAcik && (
+        <MutfakSiparisFisiPenceresi
+          siparis={siparis}
+          mutfakAdi={mutfakAdi}
+          onKapat={() => setFisPenceresiAcik(false)}
+        />
       )}
     </div>
   );
