@@ -17,6 +17,9 @@ const D8 = path.join(BUILD_TOOLS, 'd8');
 const ZIPALIGN = path.join(BUILD_TOOLS, 'zipalign');
 const APKSIGNER = path.join(BUILD_TOOLS, 'apksigner');
 
+const ZIPALIGN_BIN = fs.existsSync(ZIPALIGN) ? ZIPALIGN : 'zipalign';
+const APKSIGNER_BIN = fs.existsSync(APKSIGNER) ? APKSIGNER : 'apksigner';
+
 function run(cmd) {
   console.log('> ' + cmd);
   execSync(cmd, { stdio: 'inherit', cwd: ROOT });
@@ -37,12 +40,8 @@ function copyDirSync(src, dest, excludeExt = '.apk') {
 }
 
 async function main() {
-  if (!fs.existsSync(ANDROID_JAR) || !fs.existsSync(AAPT2)) {
-    throw new Error(`Android SDK 34 bulunamadı (${SDK_ROOT}).`);
-  }
-
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const versionName = String(pkg.version || '2.0.0').replace(/^v/, '');
+  const versionName = String(pkg.version || '2.1.0').replace(/^v/, '');
   const parts = versionName.split('.').map((n) => parseInt(n, 10) || 0);
   const versionCode = (parts[0] || 1) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
   console.log(`📦 APK Sürümü: v${versionName} (versionCode: ${versionCode})`);
@@ -58,6 +57,57 @@ async function main() {
 
   // 1. Web uygulamasını derle
   run('npx vite build');
+  fs.copyFileSync(path.join(ROOT, 'public', 'apk-meta.json'), path.join(ROOT, 'dist', 'apk-meta.json'));
+
+  const finalApk = path.join(ROOT, 'public', 'afyon-mutfak.apk');
+  const keystore = path.join(ANDROID_DIR, 'afyon-mutfak.keystore');
+
+  // Eğer tam Android SDK 34 yoksa ama mevcut APK şablonu ve apksigner varsa hızlı paketleme yap
+  if (!fs.existsSync(ANDROID_JAR) || !fs.existsSync(AAPT2)) {
+    if (!fs.existsSync(finalApk)) {
+      throw new Error(`Android SDK 34 bulunamadı (${SDK_ROOT}) ve temel APK şablonu yok.`);
+    }
+    console.log('⚡ SDK 34 kurulu değil; mevcut APK şablonu güncel dist/ bundle ile paketlenip imzalanıyor...');
+    
+    fs.mkdirSync(BUILD_DIR, { recursive: true });
+    const unalignedApk = path.join(BUILD_DIR, 'unaligned.apk');
+    const alignedApk = path.join(BUILD_DIR, 'aligned.apk');
+
+    const pythonScript = `
+import zipfile, os
+root = "${ROOT}"
+dist_dir = os.path.join(root, "dist")
+base_apk = "${finalApk}"
+temp_apk = "${unalignedApk}"
+
+with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compression=zipfile.ZIP_DEFLATED) as dst:
+    for item in src.infolist():
+        if not item.filename.startswith("assets/www/") and not item.filename.startswith("META-INF/"):
+            dst.writestr(item, src.read(item.filename))
+    for foldername, subfolders, filenames in os.walk(dist_dir):
+        for filename in filenames:
+            if filename.endswith(".apk"): continue
+            filepath = os.path.join(foldername, filename)
+            relpath = os.path.relpath(filepath, dist_dir)
+            arcname = "assets/www/" + relpath
+            dst.write(filepath, arcname)
+`;
+    fs.writeFileSync(path.join(BUILD_DIR, 'repack.py'), pythonScript);
+    console.log('✍️  APK imzalanıyor (JAR v1 + APK v2/v3 şeması)...');
+    const { ApkSigner, SigningKey, convertToPEM } = await import('apk_sign_ts');
+    const ksBuf = new Uint8Array(fs.readFileSync(keystore));
+    const { privateKey, certificate } = await convertToPEM(ksBuf, 'afyon123', 'jks');
+    const signer = new ApkSigner({
+      signingKey: SigningKey.fromPEM(privateKey, certificate),
+    });
+    const unalignedBytes = new Uint8Array(fs.readFileSync(unalignedApk));
+    const { signedApk } = await signer.sign(unalignedBytes);
+    fs.writeFileSync(finalApk, signedApk);
+
+    const stat = fs.statSync(finalApk);
+    console.log(`\n✅ Güncel APK hazır: ${finalApk} (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
+    return;
+  }
 
   // 2. Temiz build dizini hazırla
   fs.rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -137,16 +187,14 @@ async function main() {
   run(`"${ZIPALIGN}" -f -p 4 "${baseApk}" "${alignedApk}"`);
 
   // 9. Keystore & apksigner
-  const keystore = path.join(ANDROID_DIR, 'afyon-mutfak.keystore');
   if (!fs.existsSync(keystore)) {
     run(
       `keytool -genkeypair -v -keystore "${keystore}" -alias afyonmutfak -keyalg RSA -keysize 2048 -validity 10000 -storepass afyon123 -keypass afyon123 -dname "CN=Afyon Ev Lezzetleri, O=Afyon Mutfak, C=TR"`
     );
   }
 
-  const finalApk = path.join(ROOT, 'public', 'afyon-mutfak.apk');
   run(
-    `"${APKSIGNER}" sign --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --ks "${keystore}" --ks-key-alias afyonmutfak --ks-pass pass:afyon123 --key-pass pass:afyon123 --out "${finalApk}" "${alignedApk}"`
+    `"${APKSIGNER_BIN}" sign --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --ks "${keystore}" --ks-key-alias afyonmutfak --ks-pass pass:afyon123 --key-pass pass:afyon123 --out "${finalApk}" "${alignedApk}"`
   );
   run(`"${APKSIGNER}" verify --verbose "${finalApk}"`);
 

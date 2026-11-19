@@ -7,6 +7,8 @@ import {
   LogOut,
   ChevronDown,
   ChevronUp,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import { MutfakTeslimatAyarKarti } from './MutfakTeslimatAyarKarti';
 import { MutfakAfisSekmesi } from './MutfakAfisSekmesi';
@@ -155,6 +157,35 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
             <MutfakBelgelerSekmesi mutfakId={mutfakId} mutfakAdi={mutfakAdi} />
           </div>
         )}
+      </div>
+
+      {/* 4. Android Mutfak Uygulaması (APK v2.1.0) İndir */}
+      <div className="rounded-2xl bg-[#180A1F] border border-amber-500/40 p-4 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+            <Smartphone className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-white">Android Mutfak Uygulaması</h3>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                v2.1.0 Güncel
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5 truncate">
+              Ekran açık tutma, zil alarmı ve arka plan sipariş bildirimleri
+            </p>
+          </div>
+        </div>
+
+        <a
+          href="/afyon-mutfak.apk"
+          download="afyon-mutfak.apk"
+          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-purple-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 shrink-0 cursor-pointer"
+        >
+          <Download className="w-4 h-4" />
+          <span>APK İndir</span>
+        </a>
       </div>
 
       {/* Güvenli Çıkış (Yanlışlıkla basılmasın diye en altta ve onaylı) */}
