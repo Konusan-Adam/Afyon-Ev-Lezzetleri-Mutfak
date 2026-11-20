@@ -48,6 +48,7 @@ import {
   androidMutfakOturumBildir,
   androidOturumKapatBildir,
 } from '@/src/MalzemeCekmeceleri/Mutfak/AndroidKopruServisi';
+import { androidZilTercihiniSenkronizeEt } from '@/src/MalzemeCekmeceleri/Mutfak/MutfakZilMelodileri';
 import { MutfakYeniSiparisUyarisi } from '../Bilesenler/Mutfak/MutfakYeniSiparisUyarisi';
 import { MutfakSiparisIptalUyarisi } from '../Bilesenler/Mutfak/MutfakSiparisIptalUyarisi';
 import { MutfakGirisEkrani } from './MutfakGirisEkrani';
@@ -59,6 +60,7 @@ import {
   siparisStokDusumuUygula,
   siparisStokIadeUygula,
 } from '@/src/MalzemeCekmeceleri/Mutfak/gunlukStokIslemleri';
+import { MutfakDurumUyariKarti } from './MutfakDurumUyariKarti';
 
 const VARSAYILAN_TEST_MUTFAKLARI = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1', 'm2', 'mutfak-muzaffer'];
 const M1_ESLESEN_KIMLIKLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
@@ -115,6 +117,10 @@ export const MutfakPaneli: React.FC = () => {
   const [silinecekCokluMenuId, setSilinecekCokluMenuId] = useState<string | null>(null);
   const [stokPlanlayiciAcik, setStokPlanlayiciAcik] = useState(false);
   const [molaModalAcik, setMolaModalAcik] = useState(false);
+  const [dukkanAcikBolumIstegi, setDukkanAcikBolumIstegi] = useState<{
+    bolum: 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
+    tetik: number;
+  } | null>(null);
   const islenenStokSiparisleriRef = useRef<Set<string>>(new Set());
   const iadeEdilenStokSiparisleriRef = useRef<Set<string>>(new Set());
 
@@ -204,6 +210,7 @@ export const MutfakPaneli: React.FC = () => {
       ekKimlikler,
       tumMutfaklar: aktifKullanici?.rol === 'yonetici',
     });
+    androidZilTercihiniSenkronizeEt();
   }, [oturumYetkiliMi, mutfakId, mutfakAdi, mutfakAcik, mutfakKaydi?.id, mutfakKaydi?.kimlik, aktifKullanici?.rol]);
 
   const [canliYemekler, setCanliYemekler] = useState<Yemek[]>([]);
@@ -231,14 +238,30 @@ export const MutfakPaneli: React.FC = () => {
     return () => abonelikDurdur();
   }, [mutfakId, oturumYetkiliMi]);
 
-  const onayBekliyorMu =
+  const yoneticiDegilVeTestDegil =
     aktifKullanici?.rol !== 'yonetici' &&
-    !VARSAYILAN_TEST_MUTFAKLARI.includes(aktifKullanici?.kimlik || '') &&
+    !VARSAYILAN_TEST_MUTFAKLARI.includes(aktifKullanici?.kimlik || '');
+
+  const askidaMi =
+    yoneticiDegilVeTestDegil &&
+    Boolean(mutfakKaydi?.askida_mi || (aktifKullanici as any)?.askida_mi);
+
+  const reddedildiMi =
+    yoneticiDegilVeTestDegil &&
+    (mutfakKaydi?.onay_durumu === 'reddedildi' ||
+      (!mutfakKaydi && (aktifKullanici as any)?.onay_durumu === 'reddedildi'));
+
+  const onayBekliyorMu =
+    yoneticiDegilVeTestDegil &&
+    !askidaMi &&
+    !reddedildiMi &&
     (
       mutfakKaydi?.onay_durumu === 'beklemede' ||
       mutfakKaydi?.onayli_mi === false ||
       (!mutfakKaydi && ((aktifKullanici as any)?.onay_durumu === 'beklemede' || (aktifKullanici as any)?.onayli_mi === false))
     );
+
+  const operasyonKilitliMi = askidaMi || reddedildiMi || onayBekliyorMu;
 
   // Bu mutfağa ait siparişler (çapraz mutfak sızıntısı engellendi)
   const buMutfaginCanliSiparisleri = useMemo(
@@ -362,6 +385,7 @@ export const MutfakPaneli: React.FC = () => {
   }, [mutfakYemekleri, menuArama, seciliMenuKategori]);
 
   const toggleMutfakDurumu = async () => {
+    if (operasyonKilitliMi) return;
     const yeniDurum = !mutfakAcik;
     setMutfakAcik(yeniDurum);
 
@@ -500,7 +524,7 @@ export const MutfakPaneli: React.FC = () => {
       {/* Üst Başlık Barı (Mobilde sadece Mutfak Adı + Aç/Kapa butonu, masaüstünde tam kontroller) */}
       <header className="bg-[#180A1F] border-b border-[#3E1646] px-3.5 sm:px-4 py-3.5 sticky top-0 z-30 backdrop-blur-md">
         <div className="anasayfa-genislik flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
             <img
               src={logoSrc}
               alt="Mutfak Logosu"
@@ -509,7 +533,7 @@ export const MutfakPaneli: React.FC = () => {
                 (e.target as HTMLImageElement).src = '/assets/aistudio/image_48081a60_bc73ebae.jpg';
               }}
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-white font-black text-sm sm:text-base truncate">
                   {mutfakAdi}
@@ -518,28 +542,46 @@ export const MutfakPaneli: React.FC = () => {
                   ★ {mutfakPuani}
                 </span>
               </div>
-              <p className={`text-[11px] sm:text-xs truncate ${onayBekliyorMu ? 'text-amber-400 font-bold' : 'text-purple-300'}`}>
-                {onayBekliyorMu
+              <p
+                className={`text-[11px] sm:text-xs truncate ${
+                  askidaMi || reddedildiMi
+                    ? 'text-rose-400 font-bold'
+                    : onayBekliyorMu
+                    ? 'text-amber-400 font-bold'
+                    : 'text-purple-300'
+                }`}
+              >
+                {askidaMi
+                  ? '⏸ Mutfağınız Geçici Askıda'
+                  : reddedildiMi
+                  ? '✕ Başvuru Revizyonu Gerekli'
+                  : onayBekliyorMu
                   ? '⏳ Patron Onayı Bekleniyor'
                   : `${mutfakKonumu}`}
               </p>
             </div>
           </div>
 
-          {/* Sağ Alan: Mobilde yalnız büyük Aç/Kapa anahtarı, Masaüstünde Ses + Zil + Aç/Kapa + Çıkış */}
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="hidden md:flex items-center gap-2">
+          {/* Sağ Alan: Masaüstünde Sesli Asistan + Zil + Çıkış, mobilde sadece Aç/Kapa */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="hidden lg:flex items-center gap-2">
               <SesliAsistanButonu />
               <MutfakZilButonu />
             </div>
 
-            {onayBekliyorMu ? (
+            {operasyonKilitliMi ? (
               <div
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-950/70 border border-amber-500/50 text-amber-300 select-none shadow-xs"
-                title="Patron onayı tamamlandıktan sonra mutfağınız siparişe açılacaktır"
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border select-none shadow-xs ${
+                  askidaMi || reddedildiMi
+                    ? 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+                    : 'bg-amber-950/70 border-amber-500/50 text-amber-300'
+                }`}
+                title="Patron incelemesi tamamlandıktan sonra mutfağınız siparişe açılacaktır"
               >
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Onay Bekliyor</span>
+                <Clock className={`w-3.5 h-3.5 ${askidaMi || reddedildiMi ? 'text-rose-400' : 'text-amber-400'}`} />
+                <span>
+                  {askidaMi ? 'Askıda' : reddedildiMi ? 'Reddedildi' : 'Onay Bekliyor'}
+                </span>
               </div>
             ) : (
               <button
@@ -580,18 +622,18 @@ export const MutfakPaneli: React.FC = () => {
 
       {/* Gövde ve Sekmeler */}
       <main className="anasayfa-genislik px-4 pt-6 space-y-6">
-        {/* ⚠️ ONAY BEKLİYOR BİLGİLENDİRME BANNERI */}
-        {onayBekliyorMu && (
-          <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-3.5 text-amber-200 shadow-md">
-            <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
-            <div className="space-y-1">
-              <h4 className="font-bold text-sm text-amber-300">Mutfak Başvurunuz İnceleniyor (Patron Onayı Bekleniyor)</h4>
-              <p className="text-xs text-amber-200/80 leading-relaxed">
-                Yasal hijyen belgeniz ve esnaf muafiyet evraklarınız Patron Masası tarafından incelenmektedir. Onay işlemi tamamlanana kadar mutfağınız vitrinde listelenmez ve sipariş alımı kilitlidir. Bu esnada aşağıdaki sekmelerden menünüze yemek ekleyebilir ve belgelerinizi kontrol edebilirsiniz.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Askıya Alınma / Başvuru Reddi / Onay Bekliyor Uyarı Kartı */}
+        <MutfakDurumUyariKarti
+          askidaMi={askidaMi}
+          reddedildiMi={reddedildiMi}
+          onayBekliyorMu={onayBekliyorMu}
+          askiGerekcesi={mutfakKaydi?.aski_gerekcesi || mutfakKaydi?.askiya_alma_nedeni}
+          redGerekcesi={mutfakKaydi?.red_gerekcesi || mutfakKaydi?.red_nedeni}
+          onBelgelerimeGit={() => {
+            setAktifSekme('dukkanim');
+            setDukkanAcikBolumIstegi({ bolum: 'belgeler', tetik: Date.now() });
+          }}
+        />
 
         {/* Masaüstü 4 Ana Sekme (Mobilde aşağıdaki sabit 4'lü bar kullanılır) */}
         <div className="hidden md:flex items-center gap-2.5 pb-2 border-b border-purple-950">
@@ -1157,6 +1199,7 @@ export const MutfakPaneli: React.FC = () => {
             mutfakKaydi={mutfakKaydi}
             mutfakAcik={mutfakAcik}
             onMutfakDurumuDegistir={setMutfakAcik}
+            acikBolumIstegi={dukkanAcikBolumIstegi}
             onCikisYap={() => {
               androidOturumKapatBildir();
               cikisYap();

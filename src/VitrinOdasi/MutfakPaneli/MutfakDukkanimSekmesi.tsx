@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SlidersHorizontal,
   Sparkles,
@@ -8,13 +8,19 @@ import {
   ChevronDown,
   ChevronUp,
   Star,
+  Music,
+  Mic,
 } from 'lucide-react';
+import { sesliGeriBildirimTestEt } from '@/src/MalzemeCekmeceleri/Mutfak/MutfakSesliAsistanServisi';
 import { MutfakTeslimatAyarKarti } from './MutfakTeslimatAyarKarti';
 import { MutfakAfisSekmesi } from './MutfakAfisSekmesi';
 import { MutfakBelgelerSekmesi } from './MutfakBelgelerSekmesi';
 import { MutfakYorumlarSekmesi } from './MutfakYorumlarSekmesi';
+import { MutfakZilSeciciPenceresi } from './MutfakZilSeciciPenceresi';
 import { MutfakZilButonu } from '../Bilesenler/Mutfak/MutfakZilButonu';
 import { SesliAsistanButonu } from '../Bilesenler/Mutfak/SesliAsistanButonu';
+
+export type DukkanBolumu = 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
 
 interface MutfakDukkanimSekmesiProps {
   mutfakId: string;
@@ -23,9 +29,8 @@ interface MutfakDukkanimSekmesiProps {
   mutfakAcik: boolean;
   onMutfakDurumuDegistir: (acikMi: boolean) => void;
   onCikisYap: () => void;
+  acikBolumIstegi?: { bolum: DukkanBolumu; tetik: number } | null;
 }
-
-type DukkanBolumu = 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
 
 export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
   mutfakId,
@@ -34,9 +39,17 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
   mutfakAcik,
   onMutfakDurumuDegistir,
   onCikisYap,
+  acikBolumIstegi,
 }) => {
   const [acikBolum, setAcikBolum] = useState<DukkanBolumu | null>('ayarlar');
   const [cikisOnayiAcik, setCikisOnayiAcik] = useState(false);
+  const [zilSeciciAcik, setZilSeciciAcik] = useState(false);
+
+  useEffect(() => {
+    if (acikBolumIstegi?.bolum) {
+      setAcikBolum(acikBolumIstegi.bolum);
+    }
+  }, [acikBolumIstegi]);
 
   const bolumDegistir = (bolum: DukkanBolumu) => {
     setAcikBolum((mevcut) => (mevcut === bolum ? null : bolum));
@@ -51,13 +64,30 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
           <span>Ses & Zil Uyarıları</span>
         </div>
         <p className="text-xs text-gray-400 leading-relaxed">
-          Yeni sipariş geldiğinde zil çalmasını ve kalan dakikaların sesli okunmasını buradan kontrol edebilirsiniz.
+          Yeni sipariş geldiğinde siparişi alana kadar kesintisiz çalacak melodiyi seçin, dinleyin veya cihazınızdan ses dosyası ekleyin.
         </p>
         <div className="flex items-center gap-2.5 flex-wrap pt-1">
           <MutfakZilButonu />
+          <button
+            type="button"
+            onClick={() => setZilSeciciAcik(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 text-amber-300 text-xs font-bold transition-colors cursor-pointer"
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>Zil Sesi Seç &amp; Ekle</span>
+          </button>
           <SesliAsistanButonu />
+          <button
+            type="button"
+            onClick={() => sesliGeriBildirimTestEt()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-900/60 hover:bg-purple-800/80 border border-purple-700/50 text-purple-100 text-xs font-bold transition-colors cursor-pointer"
+          >
+            <Mic className="w-3.5 h-3.5 text-amber-300" />
+            <span>Sesli Anonsu Test Et</span>
+          </button>
         </div>
       </div>
+      <MutfakZilSeciciPenceresi acik={zilSeciciAcik} kapat={() => setZilSeciciAcik(false)} />
 
       {/* 1. Çalışma Saatleri & Min. Sepet Ayarları */}
       <div className="rounded-2xl bg-[#180A1F] border border-purple-900/60 overflow-hidden">
@@ -71,9 +101,9 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
               <SlidersHorizontal className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-white">Çalışma Saatleri & Min. Sepet</h3>
+              <h3 className="text-sm font-bold text-white">Çalışma Saatleri &amp; Vitrin Bilgileri</h3>
               <p className="text-[11px] text-gray-400 truncate">
-                Minimum sipariş tutarı, hazırlık süresi ve mahalle bilgisi
+                Mutfak sloganı, minimum sepet tutarı, hazırlık süresi ve adres
               </p>
             </div>
           </div>
@@ -154,7 +184,11 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
         </button>
         {acikBolum === 'belgeler' && (
           <div className="px-4 pb-4 pt-3 border-t border-purple-900/40">
-            <MutfakBelgelerSekmesi mutfakId={mutfakId} mutfakAdi={mutfakAdi} />
+            <MutfakBelgelerSekmesi
+              mutfakId={mutfakId}
+              mutfakAdi={mutfakAdi}
+              mutfakKaydi={mutfakKaydi}
+            />
           </div>
         )}
       </div>

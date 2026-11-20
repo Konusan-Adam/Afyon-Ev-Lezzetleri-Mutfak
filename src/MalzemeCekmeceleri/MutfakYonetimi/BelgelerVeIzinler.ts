@@ -47,3 +47,68 @@ export const RESMI_BELGE_REHBERI = {
     zorunluMu: true,
   }
 };
+
+export type BelgeBeyanDurumu = 'evet' | 'hayir_alacagim' | '';
+
+export interface BelgeDurumOzeti {
+  rozetMetni: string;
+  rozetSinifi: string;
+  bilgiNotu: string;
+}
+
+export function belgeBeyaniniCozumle(
+  belgeNo?: string,
+  belgelerVarMi?: boolean,
+  kullaniciBeyani?: string,
+  gorselUrl?: string
+): BelgeBeyanDurumu {
+  if ((belgeNo && belgeNo.trim() !== '') || (gorselUrl && gorselUrl.trim() !== '')) return 'evet';
+  if (kullaniciBeyani === 'evet' || kullaniciBeyani === 'hayir_alacagim') {
+    return kullaniciBeyani;
+  }
+  if (belgelerVarMi === true) return 'evet';
+  if (belgelerVarMi === false) return 'hayir_alacagim';
+  return '';
+}
+
+export function belgeDurumOzetiGetir(
+  onayliMi: boolean,
+  belgeNo: string,
+  beyan: BelgeBeyanDurumu,
+  numaraAdi: string,
+  gorselUrl?: string
+): BelgeDurumOzeti {
+  if (onayliMi) {
+    return {
+      rozetMetni: '✓ Patron Onaylı',
+      rozetSinifi: 'bg-emerald-950/80 text-emerald-300 border-emerald-700',
+      bilgiNotu: 'Belgeniz Patron Masası tarafından doğrulanıp onaylanmıştır.',
+    };
+  }
+  if (belgeNo.trim() !== '' || (gorselUrl && gorselUrl.trim() !== '')) {
+    return {
+      rozetMetni: '⏳ İncelemede',
+      rozetSinifi: 'bg-sky-950/80 text-sky-300 border-sky-700',
+      bilgiNotu: 'Belge bilginiz veya fotoğrafınız kaydedildi. Patron Masası doğrulaması bekleniyor.',
+    };
+  }
+  if (beyan === 'evet') {
+    return {
+      rozetMetni: 'Var Beyanı — No Girin',
+      rozetSinifi: 'bg-amber-950/80 text-amber-300 border-amber-600',
+      bilgiNotu: `Kayıtta "Evet, var" beyanında bulundunuz. Doğrulama için ${numaraAdi} bilginizi girip veya fotoğrafını yükleyip kaydediniz.`,
+    };
+  }
+  if (beyan === 'hayir_alacagim') {
+    return {
+      rozetMetni: 'Alacağım Beyanı',
+      rozetSinifi: 'bg-rose-950/80 text-rose-300 border-rose-700',
+      bilgiNotu: `Kayıtta "Hayır, yok (Alacağım)" seçtiniz. Belgenizi aldıktan sonra ${numaraAdi} bilginizi veya fotoğrafını buraya ekleyip kaydediniz.`,
+    };
+  }
+  return {
+    rozetMetni: 'Eksik',
+    rozetSinifi: 'bg-amber-950/80 text-amber-300 border-amber-700',
+    bilgiNotu: '',
+  };
+}

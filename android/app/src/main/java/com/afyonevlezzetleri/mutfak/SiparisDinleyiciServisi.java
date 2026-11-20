@@ -36,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 public class SiparisDinleyiciServisi extends Service {
 
     public static final String PREFS_ADI = "afyon_mutfak_prefs";
+    public static final String OZEL_ZIL_DOSYA_ADI = "ozel_zil_sesi.audio";
     public static final String ACTION_BASLAT = "com.afyonevlezzetleri.mutfak.BASLAT";
     public static final String ACTION_SUSTUR = "com.afyonevlezzetleri.mutfak.SUSTUR";
     public static final String ACTION_DURDUR = "com.afyonevlezzetleri.mutfak.DURDUR";
@@ -267,16 +268,46 @@ public class SiparisDinleyiciServisi extends Service {
     private synchronized void sireniCal() {
         try {
             alarmiSustur();
+            SharedPreferences prefs = getSharedPreferences(PREFS_ADI, Context.MODE_PRIVATE);
+            String seciliKimlik = prefs.getString("zil_secili_kimlik", "enerjik_siparis");
+            float sesSeviyesi = Math.max(0.2f, Math.min(1.0f, prefs.getFloat("zil_ses_seviyesi", 0.9f)));
+
             alarmOynatici = new MediaPlayer();
             AudioAttributes attrs = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build();
             alarmOynatici.setAudioAttributes(attrs);
-            Uri sesUri = Uri.parse("android.resource://" + getPackageName() + "/" + R.raw.nukleer_siren);
-            alarmOynatici.setDataSource(this, sesUri);
+
+            boolean kaynakAtandi = false;
+            if ("ozel_dosya".equals(seciliKimlik)) {
+                java.io.File ozelDosya = new java.io.File(getFilesDir(), OZEL_ZIL_DOSYA_ADI);
+                if (ozelDosya.exists() && ozelDosya.length() > 0) {
+                    try {
+                        alarmOynatici.setDataSource(ozelDosya.getAbsolutePath());
+                        kaynakAtandi = true;
+                    } catch (Throwable ignored) {
+                        alarmOynatici.reset();
+                        alarmOynatici.setAudioAttributes(attrs);
+                    }
+                }
+            }
+
+            if (!kaynakAtandi) {
+                int rawResId = R.raw.nukleer_siren;
+                if ("kasa_bereket".equals(seciliKimlik)) {
+                    rawResId = R.raw.zil_kasa_bereket;
+                } else if ("neseli_marimba".equals(seciliKimlik)) {
+                    rawResId = R.raw.zil_neseli_marimba;
+                } else if ("sicak_cingirak".equals(seciliKimlik)) {
+                    rawResId = R.raw.zil_sicak_cingirak;
+                }
+                Uri sesUri = Uri.parse("android.resource://" + getPackageName() + "/" + rawResId);
+                alarmOynatici.setDataSource(this, sesUri);
+            }
+
             alarmOynatici.setLooping(true);
-            alarmOynatici.setVolume(1.0f, 1.0f);
+            alarmOynatici.setVolume(sesSeviyesi, sesSeviyesi);
             alarmOynatici.prepare();
             alarmOynatici.start();
 

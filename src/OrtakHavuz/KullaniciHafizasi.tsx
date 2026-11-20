@@ -28,12 +28,21 @@ interface KullaniciHafizaTipi {
     isletme_adi?: string;
     arac_tipi?: string;
     ilce?: string;
+    adres?: string;
+    calisma_modeli?: string;
+    hijyen_belgesi_durumu?: string;
+    esnaf_muafiyet_durumu?: string;
     sifre?: string;
+    guvenlik_sorusu?: string;
+    guvenlik_cevabi?: string;
     hijyen_onayli_mi?: boolean;
     esnaf_muafiyet_onayli_mi?: boolean;
     belgeler?: any;
+    sozlesme_onayli?: boolean;
+    kvkk_onayli?: boolean;
   }) => Promise<boolean>;
   cikisYap: () => void;
+  aktifKullaniciBilgisiGuncelle: (guncelAlanlar: Partial<Kullanici>) => void;
   testRoluneGec: (rol: KullaniciRolu) => void;
 }
 
@@ -121,7 +130,15 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
     isletme_adi?: string;
     arac_tipi?: string;
     ilce?: string;
+    adres?: string;
+    calisma_modeli?: string;
+    hijyen_belgesi_durumu?: string;
+    esnaf_muafiyet_durumu?: string;
     sifre?: string;
+    guvenlik_sorusu?: string;
+    guvenlik_cevabi?: string;
+    sozlesme_onayli?: boolean;
+    kvkk_onayli?: boolean;
   }): Promise<boolean> => {
     setYukleniyor(true);
     const kaydolunankullanici = await veritabaninaKullaniciKaydet(bilgiler);
@@ -152,6 +169,10 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const aktifKullaniciBilgisiGuncelle = (guncelAlanlar: Partial<Kullanici>) => {
+    setAktifKullanici((mevcut) => (mevcut ? { ...mevcut, ...guncelAlanlar } : mevcut));
+  };
+
   return (
     <KullaniciContext.Provider
       value={{
@@ -175,6 +196,7 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
         girisYap,
         kayitOl,
         cikisYap,
+        aktifKullaniciBilgisiGuncelle,
         testRoluneGec,
       }}
     >

@@ -77,41 +77,86 @@ export function mutfakGongCal(): void {
   }
 }
 
+let hazirSesler: SpeechSynthesisVoice[] = [];
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  try {
+    hazirSesler = window.speechSynthesis.getVoices() || [];
+    window.speechSynthesis.onvoiceschanged = () => {
+      try {
+        hazirSesler = window.speechSynthesis.getVoices() || [];
+      } catch {}
+    };
+  } catch {}
+}
+
+function konusmayiBaslat(metin: string): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(metin);
+    utterance.lang = 'tr-TR';
+    utterance.rate = 0.96;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    const sesler = hazirSesler.length > 0 ? hazirSesler : window.speechSynthesis.getVoices();
+    const trSes = sesler.find((s) => s.lang.startsWith('tr') || s.lang.includes('TR'));
+    if (trSes) utterance.voice = trSes;
+
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.warn('SpeechSynthesis speak hatası:', e);
+  }
+}
+
 /**
  * Web Speech API ile Türkçe sesli anons yapar
  */
-export function mutfakSesliAnonsYap(metin: string): void {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+export function mutfakSesliAnonsYap(
+  metin: string,
+  secenekler?: { anindaKonus?: boolean; gongCal?: boolean }
+): void {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   if (!sesliAsistanAktifMi()) return;
 
   try {
-    // Önce gong sesi ver
-    mutfakGongCal();
+    if (secenekler?.gongCal !== false) {
+      mutfakGongCal();
+    }
 
-    // Küçük bir gecikmeyle konuşmayı başlat
-    setTimeout(() => {
-      try {
-        window.speechSynthesis.cancel(); // Önceki kuyruğu temizle
-
-        const utterance = new SpeechSynthesisUtterance(metin);
-        utterance.lang = 'tr-TR';
-        utterance.rate = 0.95; // Hafif yavaş ve net anons tonu
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-
-        // Türkçe ses profili varsa seç
-        const sesler = window.speechSynthesis.getVoices();
-        const trSes = sesler.find((s) => s.lang.startsWith('tr') || s.lang.includes('TR'));
-        if (trSes) utterance.voice = trSes;
-
-        window.speechSynthesis.speak(utterance);
-      } catch (e) {
-        console.warn('SpeechSynthesis speak hatası:', e);
-      }
-    }, 280);
+    if (secenekler?.anindaKonus) {
+      konusmayiBaslat(metin);
+    } else {
+      setTimeout(() => {
+        konusmayiBaslat(metin);
+      }, 260);
+    }
   } catch (err) {
     console.warn('Sesli anons hatası:', err);
   }
+}
+
+export function sesliGeriBildirimTestEt(): void {
+  sesliAsistanAyarla(true);
+  mutfakGongCal();
+  konusmayiBaslat(
+    'Afyon Ev Lezzetleri sesli geri bildirim sistemi aktif. Yeni sipariş geldiğinde ve hazırlık sürelerinde size sesli bilgi verilecektir.'
+  );
+}
+
+export function yeniSiparisSesliAnonsYap(
+  siparisKodu: string,
+  musteriAdi: string,
+  tutar: number
+): void {
+  if (!sesliAsistanAktifMi()) return;
+  const tutarMetni = tutar > 0 ? `, toplam ${Math.round(tutar)} lira` : '';
+  setTimeout(() => {
+    konusmayiBaslat(
+      `Yeni sipariş geldi! ${musteriAdi}${tutarMetni}. Sipariş kodu ${siparisKodu}.`
+    );
+  }, 1100);
 }
 
 /**

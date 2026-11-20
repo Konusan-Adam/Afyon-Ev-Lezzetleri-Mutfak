@@ -20,6 +20,7 @@ export interface MutfakTipi {
   hazirlanma_suresi?: string;
   belgeler?: any;
   tip?: string;
+  calisma_modeli?: 'sube_tedarikcisi' | 'sadece_site_uygulama' | 'her_ikisi' | string;
   askida_mi?: boolean;
 }
 
@@ -183,7 +184,13 @@ export interface Kullanici {
   arac_tipi?: string;
   plaka?: string;
   ilce?: string;
+  adres?: string;
+  calisma_modeli?: 'sube_tedarikcisi' | 'sadece_site_uygulama' | 'her_ikisi' | string;
+  hijyen_belgesi_durumu?: 'evet' | 'hayir_alacagim' | string;
+  esnaf_muafiyet_durumu?: 'evet' | 'hayir_alacagim' | string;
   onayli_mi?: boolean;
+  guvenlik_sorusu?: string;
+  guvenlik_cevabi?: string;
   olusturma_tarihi?: string;
 }
 

@@ -31,6 +31,7 @@ export * from "./gelAlSubeleriGetir";
 export * from "./kampanyalariGetir";
 export * from "./kategorileriGetir";
 export * from "./kullaniciIslemleri";
+export * from "./GuvenlikSorusuServisi";
 export * from "./useKuryeAyarlari";
 export * from "./yedeklemeServisi";
 export * from "./yemekArama";
@@ -78,6 +79,7 @@ export * from "./KuryeTeslimat/useKuryeKonumYayini";
 
 // Mutfak Logic
 export * from "./Mutfak/MutfakSiparisIslemleri";
+export * from "./Mutfak/MutfakZilMelodileri";
 export * from "./Mutfak/MutfakZilServisi";
 export * from "./Mutfak/mutfakDetayGetir";
 export * from "./Mutfak/mutfakYemekleriGetir";

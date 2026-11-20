@@ -175,6 +175,8 @@ export interface TestKullaniciKaydi {
   sifre: string;
   rol: string;
   isletme_adi?: string;
+  guvenlik_sorusu?: string;
+  guvenlik_cevabi?: string;
   [key: string]: any;
 }
 

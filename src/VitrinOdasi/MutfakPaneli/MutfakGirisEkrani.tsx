@@ -1,7 +1,35 @@
-import React, { useState } from 'react';
-import { Phone, Lock, Loader2, ShieldCheck, User, Store, MapPin, HelpCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Phone,
+  Lock,
+  Loader2,
+  ShieldCheck,
+  User,
+  Store,
+  HelpCircle,
+  ShieldQuestion,
+  Info,
+  MapPin,
+  FileCheck2,
+} from 'lucide-react';
 import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
+import {
+  GUVENLIK_SORULARI,
+  GUVENLIK_SORUSU_ONEM_ACIKLAMASI,
+} from '@/src/MalzemeCekmeceleri/GuvenlikSorusuServisi';
+import {
+  hukukiSozlesmeleriCanliSenkronizeEt,
+  hukukiSozlesmeleriGetir,
+} from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
+import { HukukiSozlesme } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/tipler';
 import { ApkGuncellemeUyarisi } from './ApkGuncellemeUyarisi';
+import { MutfakSifreKurtarmaPenceresi } from './MutfakSifreKurtarmaPenceresi';
+import {
+  BelgeDurumSecimi,
+  CalismaModeliSecimi,
+  MutfakCalismaVeBelgeSecimi,
+} from './MutfakCalismaVeBelgeSecimi';
+import { MutfakSozlesmeOkumaModali } from './MutfakSozlesmeOkumaModali';
 
 export const MutfakGirisEkrani: React.FC = () => {
   const { girisYap, kayitOl, yukleniyor } = kullaniciHafizasiKullan();
@@ -12,8 +40,35 @@ export const MutfakGirisEkrani: React.FC = () => {
   const [adSoyad, setAdSoyad] = useState('');
   const [isletmeAdi, setIsletmeAdi] = useState('');
   const [ilce, setIlce] = useState('Merkez');
+  const [adres, setAdres] = useState('');
+  const [calismaModeli, setCalismaModeli] = useState<CalismaModeliSecimi>('');
+  const [hijyenBelgesi, setHijyenBelgesi] = useState<BelgeDurumSecimi>('');
+  const [esnafMuafiyet, setEsnafMuafiyet] = useState<BelgeDurumSecimi>('');
+  const [guvenlikSorusu, setGuvenlikSorusu] = useState<string>(GUVENLIK_SORULARI[0]);
+  const [guvenlikCevabi, setGuvenlikCevabi] = useState('');
+
+  const [sozlesmeler, setSozlesmeler] = useState<Record<string, HukukiSozlesme>>(() =>
+    hukukiSozlesmeleriGetir()
+  );
+  const [mutfakSozlesmesiOkundu, setMutfakSozlesmesiOkundu] = useState(false);
+  const [kvkkOkundu, setKvkkOkundu] = useState(false);
+  const [mutfakSozlesmesiOnayli, setMutfakSozlesmesiOnayli] = useState(false);
+  const [kvkkOnayli, setKvkkOnayli] = useState(false);
+  const [acikSozlesmeTuru, setAcikSozlesmeTuru] = useState<
+    'mutfak_kayit_sozlesmesi' | 'kvkk_aydinlatma' | null
+  >(null);
+
+  const sozlesmelerTamam =
+    mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli && kvkkOkundu && kvkkOnayli;
+
   const [hataMesaji, setHataMesaji] = useState<string | null>(null);
-  const [sifreYardimiAcik, setSifreYardimiAcik] = useState(false);
+  const [sifreKurtarmaAcik, setSifreKurtarmaAcik] = useState(false);
+
+  useEffect(() => {
+    hukukiSozlesmeleriCanliSenkronizeEt()
+      .then((guncel) => setSozlesmeler(guncel))
+      .catch(() => {});
+  }, []);
 
   const handleGiris = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,11 +90,31 @@ export const MutfakGirisEkrani: React.FC = () => {
     setHataMesaji(null);
 
     if (!adSoyad.trim() || !isletmeAdi.trim() || !telefon.trim() || !sifre.trim()) {
-      setHataMesaji('Lütfen ad soyad, mutfak adı, telefon ve şifre alanlarını doldurunuz.');
+      setHataMesaji('Lütfen ad soyad, işletme adı, telefon ve şifre alanlarını doldurunuz.');
       return;
     }
     if (sifre.trim().length < 4) {
       setHataMesaji('Şifreniz en az 4 karakter olmalıdır.');
+      return;
+    }
+    if (!adres.trim()) {
+      setHataMesaji('Lütfen mutfağınızın açık adresini giriniz.');
+      return;
+    }
+    if (!calismaModeli || !hijyenBelgesi || !esnafMuafiyet) {
+      setHataMesaji(
+        'Lütfen çalışma modelinizi, hijyen belgesi ve esnaf muafiyet belgesi durumunuzu seçiniz.'
+      );
+      return;
+    }
+    if (!guvenlikSorusu.trim() || !guvenlikCevabi.trim()) {
+      setHataMesaji('Lütfen şifre kurtarma için güvenlik sorusu ve cevabını giriniz.');
+      return;
+    }
+    if (!sozlesmelerTamam) {
+      setHataMesaji(
+        'Başvuruyu tamamlamak için önce her iki yasal sözleşmeyi de tıklayıp sonuna kadar okuyarak onaylamanız gerekmektedir.'
+      );
       return;
     }
 
@@ -49,36 +124,53 @@ export const MutfakGirisEkrani: React.FC = () => {
       telefon: telefon.trim(),
       sifre: sifre.trim(),
       ilce: ilce.trim() || 'Merkez',
+      adres: adres.trim(),
+      calisma_modeli: calismaModeli,
+      hijyen_belgesi_durumu: hijyenBelgesi,
+      esnaf_muafiyet_durumu: esnafMuafiyet,
+      guvenlik_sorusu: guvenlikSorusu.trim(),
+      guvenlik_cevabi: guvenlikCevabi.trim(),
+      sozlesme_onayli: mutfakSozlesmesiOnayli,
+      kvkk_onayli: kvkkOnayli,
       rol: 'ev_mutfagi',
     });
 
     if (!basarili) {
-      setHataMesaji('Kayıt oluşturulamadı! Telefon numarası geçersiz veya sistemde zaten kayıtlı olabilir.');
+      setHataMesaji(
+        'Kayıt oluşturulamadı! Telefon numarası geçersiz veya sistemde zaten kayıtlı olabilir.'
+      );
     }
   };
 
+  const okunanSozlesme = acikSozlesmeTuru ? sozlesmeler[acikSozlesmeTuru] || null : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center p-4 bg-[#0A020D]/95 backdrop-blur-md select-none overflow-y-auto gap-3">
-      <div className="w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-start sm:justify-center p-4 py-6 bg-[#0A020D]/95 backdrop-blur-md select-none overflow-y-auto gap-3">
+      <div className="w-full max-w-lg shrink-0">
         <ApkGuncellemeUyarisi />
       </div>
-      <div className="relative w-full max-w-md bg-[#16071D] border border-purple-900/60 rounded-3xl p-7 text-gray-200 shadow-2xl shadow-purple-950/55 my-auto">
+      <div className="relative w-full max-w-lg bg-[#16071D] border border-purple-900/60 rounded-3xl p-6 sm:p-7 text-gray-200 shadow-2xl shadow-purple-950/55 my-auto shrink-0">
         {/* Başlık & Logo */}
         <div className="text-center mb-5">
           <img
             src="/assets/aistudio/image_48081a60_bc73ebae.jpg"
             alt="Afyon Ev Lezzetleri Logosu"
-            className="w-24 h-24 rounded-full mx-auto border-2 border-amber-400/60 p-1 bg-white/10 shadow-xl mb-3 object-cover"
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-2 border-amber-400/60 p-1 bg-white/10 shadow-xl mb-3 object-cover"
           />
           <h2 className="text-xl font-black text-white tracking-wide">Afyon Ev Lezzetleri</h2>
-          <p className="text-xs text-amber-300 font-semibold mt-1">Ev Mutfak & Aşçı Paneli Giriş Kapısı</p>
+          <p className="text-xs text-amber-300 font-semibold mt-1">
+            Ev Mutfak & Aşçı Paneli Giriş Kapısı
+          </p>
         </div>
 
         {/* Mod Seçici: Giriş / Yeni Mutfak Başvurusu */}
         <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-[#100415] border border-purple-900/50 mb-5">
           <button
             type="button"
-            onClick={() => { setMod('giris'); setHataMesaji(null); }}
+            onClick={() => {
+              setMod('giris');
+              setHataMesaji(null);
+            }}
             className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               mod === 'giris'
                 ? 'bg-[#6D237A] text-white shadow'
@@ -89,7 +181,10 @@ export const MutfakGirisEkrani: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => { setMod('kayit'); setHataMesaji(null); }}
+            onClick={() => {
+              setMod('kayit');
+              setHataMesaji(null);
+            }}
             className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               mod === 'kayit'
                 ? 'bg-[#6D237A] text-white shadow'
@@ -127,16 +222,14 @@ export const MutfakGirisEkrani: React.FC = () => {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-purple-300">
-                  Şifre
-                </label>
+                <label className="block text-xs font-semibold text-purple-300">Şifre</label>
                 <button
                   type="button"
-                  onClick={() => setSifreYardimiAcik((v) => !v)}
-                  className="text-[11px] text-amber-300/90 hover:text-amber-200 flex items-center gap-1 cursor-pointer"
+                  onClick={() => setSifreKurtarmaAcik(true)}
+                  className="text-[11px] font-semibold text-amber-300/95 hover:text-amber-200 flex items-center gap-1 cursor-pointer"
                 >
-                  <HelpCircle className="w-3 h-3" />
-                  <span>Şifremi Unuttum</span>
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>Şifremi Unuttum?</span>
                 </button>
               </div>
               <div className="relative flex items-center">
@@ -151,12 +244,6 @@ export const MutfakGirisEkrani: React.FC = () => {
                 />
               </div>
             </div>
-
-            {sifreYardimiAcik && (
-              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/30 text-[11px] text-amber-200/90 leading-relaxed">
-                Şifrenizi unuttuysanız Afyon Ev Lezzetleri yönetim destek hattı veya Patron Masası üzerinden telefon numaranızı bildirerek şifre yenileme talebinde bulunabilirsiniz.
-              </div>
-            )}
 
             <button
               type="submit"
@@ -177,87 +264,272 @@ export const MutfakGirisEkrani: React.FC = () => {
             </button>
           </form>
         ) : (
-          <form onSubmit={handleKayit} className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-purple-300 mb-1">Aşçı Ad Soyad</label>
-              <div className="relative flex items-center">
-                <User className="absolute left-3.5 w-4 h-4 text-purple-400" />
-                <input
-                  type="text"
-                  value={adSoyad}
-                  onChange={(e) => setAdSoyad(e.target.value)}
-                  placeholder="Örn: Ayşe Demir"
-                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-purple-300 mb-1">Ev Mutfağı / İşletme Adı</label>
-              <div className="relative flex items-center">
-                <Store className="absolute left-3.5 w-4 h-4 text-purple-400" />
-                <input
-                  type="text"
-                  value={isletmeAdi}
-                  onChange={(e) => setIsletmeAdi(e.target.value)}
-                  placeholder="Örn: Ayşe Hanım Afyon Mutfağı"
-                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
+          <form onSubmit={handleKayit} className="space-y-3.5">
+            {/* Temel Kimlik ve İletişim Bilgileri (E-postasız) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-purple-300 mb-1">Telefon</label>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  Ad Soyad <span className="text-amber-400">*</span>
+                </label>
                 <div className="relative flex items-center">
-                  <Phone className="absolute left-3 w-3.5 h-3.5 text-purple-400" />
+                  <User className="absolute left-3.5 w-4 h-4 text-purple-400" />
                   <input
-                    type="tel"
-                    value={telefon}
-                    onChange={(e) => setTelefon(e.target.value)}
-                    placeholder="05XX XXX XX XX"
-                    className="w-full pl-8 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                    type="text"
+                    value={adSoyad}
+                    onChange={(e) => setAdSoyad(e.target.value)}
+                    placeholder="Örn: Ayşe Demir"
+                    className="w-full pl-10 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-purple-300 mb-1">İlçe</label>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  İşletme Adı <span className="text-amber-400">*</span>
+                </label>
                 <div className="relative flex items-center">
-                  <MapPin className="absolute left-3 w-3.5 h-3.5 text-purple-400" />
+                  <Store className="absolute left-3.5 w-4 h-4 text-purple-400" />
                   <input
                     type="text"
-                    value={ilce}
-                    onChange={(e) => setIlce(e.target.value)}
-                    placeholder="Merkez"
-                    className="w-full pl-8 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                    value={isletmeAdi}
+                    onChange={(e) => setIsletmeAdi(e.target.value)}
+                    placeholder="Örn: Ayşe Hanım Mutfağı"
+                    className="w-full pl-10 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                    required
                   />
                 </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-purple-300 mb-1">Giriş Şifresi</label>
-              <div className="relative flex items-center">
-                <Lock className="absolute left-3.5 w-4 h-4 text-purple-400" />
-                <input
-                  type="password"
-                  value={sifre}
-                  onChange={(e) => setSifre(e.target.value)}
-                  placeholder="En az 4 karakter"
-                  className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
-                  required
-                />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  Telefon <span className="text-amber-400">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <Phone className="absolute left-3.5 w-4 h-4 text-purple-400" />
+                  <input
+                    type="tel"
+                    value={telefon}
+                    onChange={(e) => setTelefon(e.target.value)}
+                    placeholder="05XX XXX XX XX"
+                    className="w-full pl-10 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  Şifre <span className="text-amber-400">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="absolute left-3.5 w-4 h-4 text-purple-400" />
+                  <input
+                    type="password"
+                    value={sifre}
+                    onChange={(e) => setSifre(e.target.value)}
+                    placeholder="En az 4 karakter"
+                    className="w-full pl-10 pr-3 py-2.5 text-xs bg-[#120518] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
+            {/* Adres Alanı */}
+            <div className="p-3 rounded-2xl bg-[#110417] border border-purple-900/50 space-y-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-purple-300 mb-1">İlçe</label>
+                  <input
+                    type="text"
+                    value={ilce}
+                    onChange={(e) => setIlce(e.target.value)}
+                    placeholder="Merkez"
+                    className="w-full px-3 py-2.5 text-xs bg-[#16071D] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-purple-300 mb-1">
+                    Mutfak Açık Adresi <span className="text-amber-400">*</span>
+                  </label>
+                  <div className="relative flex items-start">
+                    <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-purple-400" />
+                    <input
+                      type="text"
+                      value={adres}
+                      onChange={(e) => setAdres(e.target.value)}
+                      placeholder="Mahalle, cadde/sokak, bina ve daire no"
+                      className="w-full pl-9 pr-3 py-2.5 text-xs bg-[#16071D] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Çalışma Modeli, Hijyen Belgesi & Esnaf Muafiyet Seçimleri */}
+            <MutfakCalismaVeBelgeSecimi
+              calismaModeli={calismaModeli}
+              calismaModeliDegistir={setCalismaModeli}
+              hijyenBelgesi={hijyenBelgesi}
+              hijyenBelgesiDegistir={setHijyenBelgesi}
+              esnafMuafiyet={esnafMuafiyet}
+              esnafMuafiyetDegistir={setEsnafMuafiyet}
+            />
+
+            {/* Güvenlik Sorusu & Cevabı */}
+            <div className="p-3 rounded-2xl bg-[#110417] border border-purple-800/60 space-y-2.5">
+              <div>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  Güvenlik Sorusu <span className="text-amber-400">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <ShieldQuestion className="absolute left-3.5 w-4 h-4 text-amber-400 pointer-events-none" />
+                  <select
+                    value={guvenlikSorusu}
+                    onChange={(e) => setGuvenlikSorusu(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2.5 text-xs bg-[#16071D] border border-purple-900/60 rounded-xl text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                    required
+                  >
+                    {GUVENLIK_SORULARI.map((soru) => (
+                      <option key={soru} value={soru} className="bg-[#16071D] text-white">
+                        {soru}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-purple-300 mb-1">
+                  Güvenlik Sorusu Cevabı <span className="text-amber-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={guvenlikCevabi}
+                  onChange={(e) => setGuvenlikCevabi(e.target.value)}
+                  placeholder="Cevabınızı buraya yazınız"
+                  className="w-full px-3.5 py-2.5 text-xs bg-[#16071D] border border-purple-900/60 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-amber-400"
+                  required
+                />
+              </div>
+
+              <div className="flex items-start gap-2 p-2.5 rounded-xl bg-amber-950/35 border border-amber-500/30 text-[11px] text-amber-200/90 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span>{GUVENLIK_SORUSU_ONEM_ACIKLAMASI}</span>
+              </div>
+            </div>
+
+            {/* Yasal Sözleşme Onayları */}
+            <div className="p-3.5 rounded-2xl bg-[#110417] border border-purple-800/60 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                  <FileCheck2 className="w-4 h-4" />
+                  <span>Yasal Sözleşme ve Onaylar</span>
+                </div>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-950/90 text-purple-200 border border-purple-800/70">
+                  {(mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli ? 1 : 0) +
+                    (kvkkOkundu && kvkkOnayli ? 1 : 0)}{' '}
+                  / 2 Onaylandı
+                </span>
+              </div>
+
+              <div className="flex items-start gap-2.5 text-[11px] text-gray-200 leading-relaxed">
+                <input
+                  type="checkbox"
+                  checked={mutfakSozlesmesiOnayli}
+                  onChange={(e) => {
+                    if (!mutfakSozlesmesiOkundu) {
+                      setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi');
+                      return;
+                    }
+                    setMutfakSozlesmesiOnayli(e.target.checked);
+                  }}
+                  className="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer shrink-0"
+                />
+                <div className="flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi')}
+                    className="text-amber-300 underline hover:text-amber-200 font-semibold cursor-pointer text-left"
+                  >
+                    Ev Mutfağı & Aşçı İş Ortaklığı ve Hijyen Taahhüt Sözleşmesi
+                  </button>
+                  <span>&apos;ni okudum, şartları kabul ediyorum. </span>
+                  <span className="text-amber-400">*</span>
+                  <span className="block mt-0.5 text-[10px]">
+                    {mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli ? (
+                      <span className="text-emerald-400 font-semibold">✓ Okundu ve onaylandı</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi')}
+                        className="text-amber-300/90 hover:text-amber-200 font-semibold cursor-pointer"
+                      >
+                        Okumak için tıklayın →
+                      </button>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 text-[11px] text-gray-200 leading-relaxed pt-1 border-t border-purple-900/40">
+                <input
+                  type="checkbox"
+                  checked={kvkkOnayli}
+                  onChange={(e) => {
+                    if (!kvkkOkundu) {
+                      setAcikSozlesmeTuru('kvkk_aydinlatma');
+                      return;
+                    }
+                    setKvkkOnayli(e.target.checked);
+                  }}
+                  className="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer shrink-0"
+                />
+                <div className="flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setAcikSozlesmeTuru('kvkk_aydinlatma')}
+                    className="text-amber-300 underline hover:text-amber-200 font-semibold cursor-pointer text-left"
+                  >
+                    KVKK Aydınlatma ve Açık Rıza Metni
+                  </button>
+                  <span>&apos;ni okudum, kişisel verilerimin işlenmesini onaylıyorum. </span>
+                  <span className="text-amber-400">*</span>
+                  <span className="block mt-0.5 text-[10px]">
+                    {kvkkOkundu && kvkkOnayli ? (
+                      <span className="text-emerald-400 font-semibold">✓ Okundu ve onaylandı</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setAcikSozlesmeTuru('kvkk_aydinlatma')}
+                        className="text-amber-300/90 hover:text-amber-200 font-semibold cursor-pointer"
+                      >
+                        Okumak için tıklayın →
+                      </button>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {!sozlesmelerTamam && (
+              <p className="text-[11px] text-center text-amber-300/90 font-medium">
+                Başvuru butonunun aktif olması için yukarıdaki 2 sözleşmeyi de okuyup onaylayınız.
+              </p>
+            )}
+
             <button
               type="submit"
-              disabled={yukleniyor}
-              className="w-full mt-2 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-purple-950 text-xs font-extrabold transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              disabled={yukleniyor || !sozlesmelerTamam}
+              className={`w-full mt-2 py-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${
+                yukleniyor || !sozlesmelerTamam
+                  ? 'bg-gray-800/80 text-gray-500 border border-gray-700/70 cursor-not-allowed'
+                  : 'bg-amber-500 hover:bg-amber-400 text-purple-950 shadow-lg shadow-amber-500/20 cursor-pointer'
+              }`}
             >
               {yukleniyor ? (
                 <>
@@ -276,10 +548,31 @@ export const MutfakGirisEkrani: React.FC = () => {
 
         <div className="mt-5 pt-4 border-t border-purple-900/30 text-center">
           <p className="text-[11px] text-gray-400">
-            Kişiye özel telefon ve şifrenizle doğrudan kendi mutfağınızı yönetin.
+            E-posta veya SMS gerekmeden telefon, şifre ve güvenlik sorunuzla mutfağınızı güvenle yönetin.
           </p>
         </div>
       </div>
+
+      <MutfakSifreKurtarmaPenceresi
+        acik={sifreKurtarmaAcik}
+        baslangicTelefon={telefon}
+        kapat={() => setSifreKurtarmaAcik(false)}
+      />
+
+      <MutfakSozlesmeOkumaModali
+        sozlesme={okunanSozlesme}
+        kapat={() => setAcikSozlesmeTuru(null)}
+        onaylaVeKapat={() => {
+          if (acikSozlesmeTuru === 'mutfak_kayit_sozlesmesi') {
+            setMutfakSozlesmesiOkundu(true);
+            setMutfakSozlesmesiOnayli(true);
+          } else if (acikSozlesmeTuru === 'kvkk_aydinlatma') {
+            setKvkkOkundu(true);
+            setKvkkOnayli(true);
+          }
+          setAcikSozlesmeTuru(null);
+        }}
+      />
     </div>
   );
 };

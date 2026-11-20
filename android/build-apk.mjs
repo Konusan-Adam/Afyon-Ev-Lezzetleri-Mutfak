@@ -79,11 +79,18 @@ root = "${ROOT}"
 dist_dir = os.path.join(root, "dist")
 base_apk = "${finalApk}"
 temp_apk = "${unalignedApk}"
+siren_path = os.path.join(root, "public", "nukleer_siren.mp3")
 
 with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compression=zipfile.ZIP_DEFLATED) as dst:
     for item in src.infolist():
-        if not item.filename.startswith("assets/www/") and not item.filename.startswith("META-INF/"):
+        if (
+            not item.filename.startswith("assets/www/")
+            and not item.filename.startswith("META-INF/")
+            and item.filename != "res/raw/nukleer_siren.mp3"
+        ):
             dst.writestr(item, src.read(item.filename))
+    if os.path.exists(siren_path):
+        dst.write(siren_path, "res/raw/nukleer_siren.mp3", compress_type=zipfile.ZIP_STORED)
     for foldername, subfolders, filenames in os.walk(dist_dir):
         for filename in filenames:
             if filename.endswith(".apk"): continue
@@ -93,6 +100,7 @@ with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compr
             dst.write(filepath, arcname)
 `;
     fs.writeFileSync(path.join(BUILD_DIR, 'repack.py'), pythonScript);
+    run(`python3 "${path.join(BUILD_DIR, 'repack.py')}"`);
     console.log('✍️  APK imzalanıyor (JAR v1 + APK v2/v3 şeması)...');
     const { ApkSigner, SigningKey, convertToPEM } = await import('apk_sign_ts');
     const ksBuf = new Uint8Array(fs.readFileSync(keystore));
@@ -103,6 +111,7 @@ with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compr
     const unalignedBytes = new Uint8Array(fs.readFileSync(unalignedApk));
     const { signedApk } = await signer.sign(unalignedBytes);
     fs.writeFileSync(finalApk, signedApk);
+    fs.copyFileSync(finalApk, path.join(ROOT, 'dist', 'afyon-mutfak.apk'));
 
     const stat = fs.statSync(finalApk);
     console.log(`\n✅ Güncel APK hazır: ${finalApk} (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);
@@ -123,10 +132,18 @@ with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compr
   fs.mkdirSync(rawDir, { recursive: true });
   fs.mkdirSync(drawableDir, { recursive: true });
 
-  fs.copyFileSync(
-    path.join(ROOT, 'public', 'nukleer_siren.mp3'),
-    path.join(rawDir, 'nukleer_siren.mp3')
-  );
+  const rawSesDosyalari = [
+    'nukleer_siren.mp3',
+    'zil_kasa_bereket.wav',
+    'zil_neseli_marimba.wav',
+    'zil_sicak_cingirak.wav',
+  ];
+  for (const dosyaAdi of rawSesDosyalari) {
+    const kaynak = path.join(ROOT, 'public', dosyaAdi);
+    if (fs.existsSync(kaynak)) {
+      fs.copyFileSync(kaynak, path.join(rawDir, dosyaAdi));
+    }
+  }
 
   const logoSrc = path.join(ROOT, 'public', 'assets', 'aistudio', 'image_48081a60_bc73ebae.jpg');
   const mipmaps = [
@@ -154,7 +171,7 @@ with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compr
 
   run(`"${AAPT2}" compile --dir "${resDir}" -o "${compiledResZip}"`);
   run(
-    `"${AAPT2}" link -0 .mp3 --version-code ${versionCode} --version-name "${versionName}" -o "${baseApk}" -I "${ANDROID_JAR}" --manifest "${path.join(APP_MAIN, 'AndroidManifest.xml')}" --java "${genJavaDir}" -A "${path.join(BUILD_DIR, 'assets')}" "${compiledResZip}" --auto-add-overlay`
+    `"${AAPT2}" link -0 .mp3 -0 .wav --version-code ${versionCode} --version-name "${versionName}" -o "${baseApk}" -I "${ANDROID_JAR}" --manifest "${path.join(APP_MAIN, 'AndroidManifest.xml')}" --java "${genJavaDir}" -A "${path.join(BUILD_DIR, 'assets')}" "${compiledResZip}" --auto-add-overlay`
   );
 
   // 5. Java derle
@@ -197,6 +214,7 @@ with zipfile.ZipFile(base_apk, "r") as src, zipfile.ZipFile(temp_apk, "w", compr
     `"${APKSIGNER_BIN}" sign --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --ks "${keystore}" --ks-key-alias afyonmutfak --ks-pass pass:afyon123 --key-pass pass:afyon123 --out "${finalApk}" "${alignedApk}"`
   );
   run(`"${APKSIGNER}" verify --verbose "${finalApk}"`);
+  fs.copyFileSync(finalApk, path.join(ROOT, 'dist', 'afyon-mutfak.apk'));
 
   const stat = fs.statSync(finalApk);
   console.log(`\n✅ APK hazır: ${finalApk} (${(stat.size / (1024 * 1024)).toFixed(2)} MB)`);

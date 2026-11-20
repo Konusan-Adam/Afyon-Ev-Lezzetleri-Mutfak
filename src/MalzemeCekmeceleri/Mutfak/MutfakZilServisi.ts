@@ -1,17 +1,38 @@
 import { sekmeAlarmiBaslat, sekmeAlarmiDurdur } from '@/src/MalzemeCekmeceleri/SekmeAlarmi';
+import {
+  ZilSesKimligi,
+  hazirMelodiSureMsGetir,
+  hazirMelodiTekSeferCal,
+  ozelZilDosyasiniGetir,
+  seciliZilKimliginiGetir,
+  zilSesSeviyesiniGetir,
+} from './MutfakZilMelodileri';
 
 let ortakAudioContext: AudioContext | null = null;
-let ortakSirenAudio: HTMLAudioElement | null = null;
+let ortakZilAudio: HTMLAudioElement | null = null;
+let ozelSesAudio: HTMLAudioElement | null = null;
 let sesKilidiAcildi = false;
 let dinleyiciBaglandi = false;
 let aktifSesDurdurZamanlayici: ReturnType<typeof setTimeout> | null = null;
+let aktifDonguZamanlayici: ReturnType<typeof setInterval> | null = null;
+let aktifOnizlemeZamanlayici: ReturnType<typeof setTimeout> | null = null;
+let suAnKesintisizCaliyorMu = false;
 
 const kilitDinleyicileri: Array<(acik: boolean) => void> = [];
+const calinmaDinleyicileri: Array<(caliyor: boolean) => void> = [];
 
 function durumBildir(acik: boolean) {
   kilitDinleyicileri.forEach((cb) => {
     try {
       cb(acik);
+    } catch {}
+  });
+}
+
+function calinmaBildir(caliyor: boolean) {
+  calinmaDinleyicileri.forEach((cb) => {
+    try {
+      cb(caliyor);
     } catch {}
   });
 }
@@ -25,21 +46,54 @@ export function sesKilidiDurumunuDinle(cb: (acik: boolean) => void): () => void 
   };
 }
 
+export function zilCalinmaDurumunuDinle(cb: (caliyor: boolean) => void): () => void {
+  calinmaDinleyicileri.push(cb);
+  cb(suAnKesintisizCaliyorMu);
+  return () => {
+    const idx = calinmaDinleyicileri.indexOf(cb);
+    if (idx >= 0) calinmaDinleyicileri.splice(idx, 1);
+  };
+}
+
 export function sesKilidiAcikMi(): boolean {
   return sesKilidiAcildi;
 }
 
-export function mutfakZiliDurdur() {
+function tumZamanlayicilariTemizle() {
   if (aktifSesDurdurZamanlayici) {
     clearTimeout(aktifSesDurdurZamanlayici);
     aktifSesDurdurZamanlayici = null;
   }
-  if (ortakSirenAudio) {
+  if (aktifDonguZamanlayici) {
+    clearInterval(aktifDonguZamanlayici);
+    aktifDonguZamanlayici = null;
+  }
+  if (aktifOnizlemeZamanlayici) {
+    clearTimeout(aktifOnizlemeZamanlayici);
+    aktifOnizlemeZamanlayici = null;
+  }
+}
+
+function tumAudioElementleriniDurdur() {
+  if (ortakZilAudio) {
     try {
-      ortakSirenAudio.pause();
-      ortakSirenAudio.currentTime = 0;
+      ortakZilAudio.pause();
+      ortakZilAudio.currentTime = 0;
     } catch {}
   }
+  if (ozelSesAudio) {
+    try {
+      ozelSesAudio.pause();
+      ozelSesAudio.currentTime = 0;
+    } catch {}
+  }
+}
+
+export function mutfakZiliDurdur() {
+  tumZamanlayicilariTemizle();
+  tumAudioElementleriniDurdur();
+  suAnKesintisizCaliyorMu = false;
+  calinmaBildir(false);
   sekmeAlarmiDurdur();
 }
 
@@ -55,12 +109,12 @@ function ortakSesNesneleriniHazirla() {
     }
   }
 
-  if (!ortakSirenAudio) {
+  if (!ortakZilAudio) {
     try {
-      ortakSirenAudio = new Audio('/nukleer_siren.mp3');
-      ortakSirenAudio.preload = 'auto';
-      ortakSirenAudio.loop = false;
-      ortakSirenAudio.volume = 0.85;
+      ortakZilAudio = new Audio('/nukleer_siren.mp3');
+      ortakZilAudio.preload = 'auto';
+      ortakZilAudio.loop = false;
+      ortakZilAudio.volume = zilSesSeviyesiniGetir();
     } catch {}
   }
 }
@@ -90,20 +144,20 @@ export async function sesSisteminiKilidiniAc(): Promise<boolean> {
     } catch {}
   }
 
-  if (ortakSirenAudio && !sesKilidiAcildi) {
+  if (ortakZilAudio && !sesKilidiAcildi) {
     try {
-      const oncekiMute = ortakSirenAudio.muted;
-      ortakSirenAudio.muted = true;
-      const p = ortakSirenAudio.play();
+      const oncekiMute = ortakZilAudio.muted;
+      ortakZilAudio.muted = true;
+      const p = ortakZilAudio.play();
       if (p !== undefined) {
         await p;
-        ortakSirenAudio.pause();
-        ortakSirenAudio.currentTime = 0;
+        ortakZilAudio.pause();
+        ortakZilAudio.currentTime = 0;
         basarili = true;
       }
-      ortakSirenAudio.muted = oncekiMute;
+      ortakZilAudio.muted = oncekiMute;
     } catch {
-      if (ortakSirenAudio) ortakSirenAudio.muted = false;
+      if (ortakZilAudio) ortakZilAudio.muted = false;
     }
   }
 
@@ -131,90 +185,184 @@ if (typeof window !== 'undefined' && !dinleyiciBaglandi) {
   window.addEventListener('touchstart', ilkEtkilesim, { passive: true });
 }
 
+async function ozelSesDosyasiCal(donguluMu: boolean): Promise<boolean> {
+  const ozel = ozelZilDosyasiniGetir();
+  if (!ozel?.veriUrl) return false;
+  try {
+    if (!ozelSesAudio || ozelSesAudio.src !== ozel.veriUrl) {
+      ozelSesAudio = new Audio(ozel.veriUrl);
+    }
+    ozelSesAudio.loop = donguluMu;
+    ozelSesAudio.muted = false;
+    ozelSesAudio.volume = zilSesSeviyesiniGetir();
+    ozelSesAudio.currentTime = 0;
+    const p = ozelSesAudio.play();
+    if (p !== undefined) {
+      await p;
+    }
+    sesKilidiAcildi = true;
+    durumBildir(true);
+    return true;
+  } catch (e) {
+    console.warn('Özel zil sesi çalınamadı, hazır melodilerden çalınıyor:', e);
+    return false;
+  }
+}
+
+async function mp3YedekZilCal(donguluMu: boolean): Promise<boolean> {
+  if (!ortakZilAudio) return false;
+  try {
+    ortakZilAudio.loop = donguluMu;
+    ortakZilAudio.muted = false;
+    ortakZilAudio.volume = zilSesSeviyesiniGetir();
+    ortakZilAudio.pause();
+    ortakZilAudio.currentTime = 0;
+    const p = ortakZilAudio.play();
+    if (p !== undefined) {
+      await p;
+    }
+    sesKilidiAcildi = true;
+    durumBildir(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function melodiBaslat(
+  kimlik: ZilSesKimligi,
+  donguluMu: boolean
+): Promise<void> {
+  ortakSesNesneleriniHazirla();
+  const sesSeviyesi = zilSesSeviyesiniGetir();
+
+  if (kimlik === 'ozel_dosya') {
+    const caldiMi = await ozelSesDosyasiCal(donguluMu);
+    if (caldiMi) return;
+  }
+
+  // Web Audio ile seçilen heyecan verici melodiyi çal
+  if (ortakAudioContext) {
+    try {
+      if (ortakAudioContext.state === 'suspended') {
+        await ortakAudioContext.resume();
+      }
+      const hazirKimlik: Exclude<ZilSesKimligi, 'ozel_dosya'> =
+        kimlik === 'ozel_dosya' ? 'enerjik_siparis' : kimlik;
+
+      hazirMelodiTekSeferCal(ortakAudioContext, hazirKimlik, sesSeviyesi);
+      sesKilidiAcildi = true;
+      durumBildir(true);
+
+      if (donguluMu) {
+        const donguAraligiMs = hazirMelodiSureMsGetir(hazirKimlik);
+        aktifDonguZamanlayici = setInterval(() => {
+          if (!ortakAudioContext) return;
+          if (ortakAudioContext.state === 'suspended') {
+            ortakAudioContext.resume().catch(() => {});
+          }
+          hazirMelodiTekSeferCal(ortakAudioContext, hazirKimlik, zilSesSeviyesiniGetir());
+        }, donguAraligiMs);
+      }
+      return;
+    } catch (e) {
+      console.warn('Web Audio melodi çalma hatası, MP3 yedek deneniyor:', e);
+    }
+  }
+
+  await mp3YedekZilCal(donguluMu);
+}
+
 /**
- * Mutfak Sipariş Alarmı (MP3 + Web Audio Sentetizör, süreli otomatik durdurma)
+ * Seçili melodiyi veya özel ses dosyasını menüden tek tıkla dinlemek için kullanılır.
+ */
+export async function melodiOnizle(
+  kimlik: ZilSesKimligi,
+  secenekler?: { kesintisiz?: boolean }
+): Promise<void> {
+  tumZamanlayicilariTemizle();
+  tumAudioElementleriniDurdur();
+
+  const kesintisiz = Boolean(secenekler?.kesintisiz);
+  suAnKesintisizCaliyorMu = kesintisiz;
+  calinmaBildir(true);
+
+  await melodiBaslat(kimlik, kesintisiz);
+
+  if (!kesintisiz) {
+    const beklemeMs = kimlik === 'ozel_dosya' ? 5000 : hazirMelodiSureMsGetir(kimlik) + 150;
+    aktifOnizlemeZamanlayici = setTimeout(() => {
+      suAnKesintisizCaliyorMu = false;
+      calinmaBildir(false);
+      aktifOnizlemeZamanlayici = null;
+    }, beklemeMs);
+  }
+}
+
+/**
+ * Mutfak Sipariş Alarmı
+ * kesintisiz: true olduğunda aşçı siparişi kabul edene/susturana kadar kesintisiz çalar.
  */
 export const mutfakZiliCal = (
   baslik?: string,
   detay?: string,
-  secenekler?: { sureSn?: number }
+  secenekler?: { sureSn?: number; kesintisiz?: boolean }
 ) => {
+  const kesintisiz = secenekler?.kesintisiz ?? false;
   const sureMs = Math.max(1500, Math.round((secenekler?.sureSn ?? 5) * 1000));
 
-  // 1. Sekme Başlığında Flaş Sönen Alarm
   sekmeAlarmiBaslat('🚨 (1) YENİ SİPARİŞ GELİYOR!');
 
-  ortakSesNesneleriniHazirla();
+  tumZamanlayicilariTemizle();
+  tumAudioElementleriniDurdur();
 
-  if (aktifSesDurdurZamanlayici) {
-    clearTimeout(aktifSesDurdurZamanlayici);
-    aktifSesDurdurZamanlayici = null;
+  suAnKesintisizCaliyorMu = kesintisiz;
+  calinmaBildir(true);
+
+  const seciliKimlik = seciliZilKimliginiGetir();
+  melodiBaslat(seciliKimlik, kesintisiz);
+
+  if (!kesintisiz) {
+    aktifSesDurdurZamanlayici = setTimeout(() => {
+      tumAudioElementleriniDurdur();
+      suAnKesintisizCaliyorMu = false;
+      calinmaBildir(false);
+      aktifSesDurdurZamanlayici = null;
+    }, sureMs);
   }
 
-  // 2. Ses Dosyası MP3 Çalma (Kilit açılmış paylaşımlı Audio nesnesi üzerinden)
-  const calMP3 = async () => {
-    if (!ortakSirenAudio) {
-      webAudioSirenCal();
-      return;
-    }
-
-    try {
-      ortakSirenAudio.loop = false;
-      ortakSirenAudio.muted = false;
-      ortakSirenAudio.volume = 0.85;
-      ortakSirenAudio.pause();
-      ortakSirenAudio.currentTime = 0;
-      const playPromise = ortakSirenAudio.play();
-      if (playPromise !== undefined) {
-        await playPromise;
-        sesKilidiAcildi = true;
-        durumBildir(true);
-      }
-      aktifSesDurdurZamanlayici = setTimeout(() => {
-        if (ortakSirenAudio) {
-          try {
-            ortakSirenAudio.pause();
-            ortakSirenAudio.currentTime = 0;
-          } catch {}
-        }
-        aktifSesDurdurZamanlayici = null;
-      }, sureMs);
-    } catch (e) {
-      console.warn('MP3 çalınamadı, Web Audio Sentetizörü devreye giriyor:', e);
-      webAudioSirenCal();
-    }
-  };
-
-  calMP3();
-
-  // 3. Arka Plan & Masaüstü/Telefon Bildirimi & Titreşim Pattern'i
+  // Arka Plan & Masaüstü/Telefon Bildirimi & Titreşim
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
     const bildirimBaslik = baslik || '🔔 YENİ MUTFAK SİPARİŞİ!';
-    const bildirimDetay = detay || 'Acil taze sipariş düştü! Hemen tencereye alın.';
+    const bildirimDetay = detay || 'Yeni taze sipariş düştü! Onaylamak için tıklayın.';
     const bildirimSecenekleri: any = {
       body: bildirimDetay,
       icon: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
       badge: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
-      tag: 'afyon-mutfak-siparis-nukleer',
+      tag: 'afyon-mutfak-siparis-zili',
       renotify: true,
       silent: false,
     };
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then((kayit) => {
-        kayit.showNotification(bildirimBaslik, {
-          ...bildirimSecenekleri,
-          vibrate: [600, 200, 600, 200, 600, 200, 800] as any,
-        }).catch(() => {
+      navigator.serviceWorker.ready
+        .then((kayit) => {
+          kayit
+            .showNotification(bildirimBaslik, {
+              ...bildirimSecenekleri,
+              vibrate: [500, 150, 500, 150, 700] as any,
+            })
+            .catch(() => {
+              try {
+                new Notification(bildirimBaslik, bildirimSecenekleri);
+              } catch {}
+            });
+        })
+        .catch(() => {
           try {
             new Notification(bildirimBaslik, bildirimSecenekleri);
           } catch {}
         });
-      }).catch(() => {
-        try {
-          new Notification(bildirimBaslik, bildirimSecenekleri);
-        } catch {}
-      });
     } else {
       try {
         const bildirim = new Notification(bildirimBaslik, bildirimSecenekleri);
@@ -226,67 +374,6 @@ export const mutfakZiliCal = (
     }
   }
 };
-
-/**
- * Web Audio API Sentetizör Yedek Siren (Paylaşımlı AudioContext ile)
- */
-async function webAudioSirenCal() {
-  try {
-    ortakSesNesneleriniHazirla();
-    const sesMerkezi = ortakAudioContext;
-    if (!sesMerkezi) return;
-
-    if (sesMerkezi.state === 'suspended') {
-      await sesMerkezi.resume().catch(() => {});
-    }
-
-    const simdi = sesMerkezi.currentTime;
-    const toplamSure = 3.2;
-
-    const osilator1 = sesMerkezi.createOscillator();
-    const kazanc1 = sesMerkezi.createGain();
-    osilator1.type = 'sawtooth';
-
-    const osilator2 = sesMerkezi.createOscillator();
-    const kazanc2 = sesMerkezi.createGain();
-    osilator2.type = 'square';
-
-    // Siren Dalgaları
-    osilator1.frequency.setValueAtTime(320, simdi);
-    osilator1.frequency.exponentialRampToValueAtTime(880, simdi + 0.5);
-    osilator1.frequency.exponentialRampToValueAtTime(320, simdi + 1.0);
-    osilator1.frequency.exponentialRampToValueAtTime(940, simdi + 1.5);
-    osilator1.frequency.exponentialRampToValueAtTime(340, simdi + 2.0);
-    osilator1.frequency.exponentialRampToValueAtTime(880, simdi + 2.6);
-
-    osilator2.frequency.setValueAtTime(324, simdi);
-    osilator2.frequency.exponentialRampToValueAtTime(888, simdi + 0.5);
-    osilator2.frequency.exponentialRampToValueAtTime(324, simdi + 1.0);
-    osilator2.frequency.exponentialRampToValueAtTime(948, simdi + 1.5);
-    osilator2.frequency.exponentialRampToValueAtTime(348, simdi + 2.0);
-    osilator2.frequency.exponentialRampToValueAtTime(888, simdi + 2.6);
-
-    kazanc1.gain.setValueAtTime(0.01, simdi);
-    kazanc1.gain.linearRampToValueAtTime(0.45, simdi + 0.1);
-    kazanc1.gain.exponentialRampToValueAtTime(0.001, simdi + toplamSure);
-
-    kazanc2.gain.setValueAtTime(0.01, simdi);
-    kazanc2.gain.linearRampToValueAtTime(0.25, simdi + 0.1);
-    kazanc2.gain.exponentialRampToValueAtTime(0.001, simdi + toplamSure);
-
-    osilator1.connect(kazanc1);
-    kazanc1.connect(sesMerkezi.destination);
-    osilator2.connect(kazanc2);
-    kazanc2.connect(sesMerkezi.destination);
-
-    osilator1.start(simdi);
-    osilator2.start(simdi);
-    osilator1.stop(simdi + toplamSure);
-    osilator2.stop(simdi + toplamSure);
-  } catch (e) {
-    console.warn('Web Audio Siren hatası:', e);
-  }
-}
 
 /**
  * Mutfak açıkken telefon/tablet ekranının otomatik kapanmasını önler (Screen Wake Lock API).
@@ -306,9 +393,7 @@ export function ekranUyanikTutBaslat(): () => void {
       if (wakeLock?.request) {
         kilit = await wakeLock.request('screen');
       }
-    } catch {
-      // Cihaz veya iFrame kısıtlamasında sessizce devam et
-    }
+    } catch {}
   };
 
   const gorunurlukDegisti = () => {

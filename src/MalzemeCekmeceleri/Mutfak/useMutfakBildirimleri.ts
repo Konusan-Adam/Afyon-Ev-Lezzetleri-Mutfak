@@ -5,7 +5,10 @@ import { mutfakZiliCal, mutfakZiliDurdur } from './MutfakZilServisi';
 import { androidZilSustur } from './AndroidKopruServisi';
 import { mutfakTeslimZiliCal } from '@/src/MalzemeCekmeceleri/MutfakTeslimZili';
 import { sekmeAlarmiDurdur } from '@/src/MalzemeCekmeceleri/SekmeAlarmi';
-import { mutfakSesliAnonsYap } from './MutfakSesliAsistanServisi';
+import {
+  mutfakSesliAnonsYap,
+  yeniSiparisSesliAnonsYap,
+} from './MutfakSesliAsistanServisi';
 
 export interface YeniSiparisBildirimi {
   id: string;
@@ -105,12 +108,13 @@ export function useMutfakBildirimleri(
 
       aktifUyariSiparisIdRef.current = siparis.id;
 
-      // Ses ve masaüstü zilini çal (5 saniye net uyarı)
+      // Mutfak siparişi alana/reddedene kadar KESİNTİSİZ çal
       mutfakZiliCal(
         'Yeni Mutfak Siparişi! 🔔',
         `#${kod} nolu yeni sipariş geldi (${tutar} ₺). Tencere menünüze eklendi.`,
-        { sureSn: 5 }
+        { kesintisiz: true }
       );
+      yeniSiparisSesliAnonsYap(kod, musteri, tutar);
 
       // Ekranda canlı uyarı göster
       setYeniSiparisUyarisi({
@@ -121,16 +125,9 @@ export function useMutfakBildirimleri(
         zaman: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       });
 
-      // Mutfak siparişi onaylayana veya reddedene kadar her 15 saniyede bir ısrarla hatırlat
-      if (tekrarZiliRef.current) clearInterval(tekrarZiliRef.current);
-      if (!siparis.durum || siparis.durum === 'beklemede') {
-        tekrarZiliRef.current = setInterval(() => {
-          mutfakZiliCal(
-            'Onay Bekleyen Sipariş! 🔔',
-            `#${kod} nolu sipariş onaylanmayı veya reddedilmeyi bekliyor!`,
-            { sureSn: 4 }
-          );
-        }, 15000);
+      if (tekrarZiliRef.current) {
+        clearInterval(tekrarZiliRef.current);
+        tekrarZiliRef.current = null;
       }
     };
 
@@ -284,6 +281,15 @@ export function useMutfakBildirimleri(
             bilinenSiparisDurumlari.current.set(s.id, s.durum || 'beklemede');
           });
           yeniSiparisBildir(yeniGelenler[0]);
+        } else if (aktifUyariSiparisIdRef.current) {
+          // Mutfakta onay bekleyen (beklemede) başka sipariş kalmadıysa zili anında sustur
+          const bekleyenVarMi = liste.some((s) => {
+            const sipMutfak = s.mutfak_id || s.mutfakId;
+            return siparisBuMutfagaAitMi(sipMutfak) && (!s.durum || s.durum === 'beklemede');
+          });
+          if (!bekleyenVarMi) {
+            uyariKapat();
+          }
         }
       });
     }

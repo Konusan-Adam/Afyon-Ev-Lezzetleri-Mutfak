@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -284,6 +285,38 @@ public class MainActivity extends Activity {
             Intent sustur = new Intent(MainActivity.this, SiparisDinleyiciServisi.class);
             sustur.setAction(SiparisDinleyiciServisi.ACTION_SUSTUR);
             startService(sustur);
+        }
+
+        @JavascriptInterface
+        public void zilAyarla(String seciliKimlik, float sesSeviyesi, String ozelSesVeriUrl) {
+            try {
+                float sinirliSeviye = Math.max(0.2f, Math.min(1.0f, sesSeviyesi));
+                String kimlik = (seciliKimlik == null || seciliKimlik.isEmpty()) ? "enerjik_siparis" : seciliKimlik;
+                SharedPreferences prefs = getSharedPreferences(SiparisDinleyiciServisi.PREFS_ADI, Context.MODE_PRIVATE);
+                prefs.edit()
+                        .putString("zil_secili_kimlik", kimlik)
+                        .putFloat("zil_ses_seviyesi", sinirliSeviye)
+                        .apply();
+
+                File ozelDosya = new File(getFilesDir(), SiparisDinleyiciServisi.OZEL_ZIL_DOSYA_ADI);
+                if ("SIL".equals(ozelSesVeriUrl)) {
+                    if (ozelDosya.exists()) ozelDosya.delete();
+                } else if ("ozel_dosya".equals(kimlik) && ozelSesVeriUrl != null && !ozelSesVeriUrl.isEmpty()) {
+                    int virgulIdx = ozelSesVeriUrl.indexOf(',');
+                    String safBase64 = virgulIdx >= 0 ? ozelSesVeriUrl.substring(virgulIdx + 1) : ozelSesVeriUrl;
+                    byte[] sesBaytlari = Base64.decode(safBase64, Base64.DEFAULT);
+                    if (sesBaytlari != null && sesBaytlari.length > 0) {
+                        File gecici = new File(getFilesDir(), SiparisDinleyiciServisi.OZEL_ZIL_DOSYA_ADI + ".tmp");
+                        FileOutputStream fos = new FileOutputStream(gecici);
+                        fos.write(sesBaytlari);
+                        fos.flush();
+                        fos.close();
+                        if (ozelDosya.exists()) ozelDosya.delete();
+                        gecici.renameTo(ozelDosya);
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
         }
 
         @JavascriptInterface

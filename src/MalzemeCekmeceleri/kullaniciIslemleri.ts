@@ -6,22 +6,45 @@ import {
   testKullaniciEkle,
   TestKullaniciKaydi
 } from '@/src/veritabani/CanliVeriYardimcisi';
-import { telefonGecerliMi } from '@/src/MalzemeCekmeceleri';
+import { telefonGecerliMi } from './Dogrulama/telefonDogrulayici';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
+import {
+  hukukiLogKaydet,
+  hukukiSozlesmeleriGetir,
+} from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
+import {
+  GUVENLIK_SORULARI,
+  GUVENLIK_SORUSU_ONEM_ACIKLAMASI,
+  guvenlikCevabiniStandartlastir,
+  kullaniciGuvenlikSorusuGetir,
+  sifreSifirlaGuvenlikSorusuIle,
+  telefonRakamlariniTemizle,
+} from './GuvenlikSorusuServisi';
+
+export {
+  GUVENLIK_SORULARI,
+  GUVENLIK_SORUSU_ONEM_ACIKLAMASI,
+  kullaniciGuvenlikSorusuGetir,
+  sifreSifirlaGuvenlikSorusuIle,
+};
 
 function telefonTemizle(tel: string): string {
-  const rakamlar = tel.replace(/\D/g, '');
-  if (rakamlar.startsWith('90') && rakamlar.length === 12) {
-    return rakamlar.substring(2);
-  }
-  if (rakamlar.startsWith('0') && rakamlar.length === 11) {
-    return rakamlar.substring(1);
-  }
-  return rakamlar;
+  return telefonRakamlariniTemizle(tel);
 }
 
 export async function veritabaninaKullaniciKaydet(
-  yeniKullanici: Omit<Kullanici, 'kimlik' | 'onayli_mi' | 'olusturma_tarihi'> & { sifre?: string }
+  yeniKullanici: Omit<Kullanici, 'kimlik' | 'onayli_mi' | 'olusturma_tarihi'> & {
+    sifre?: string;
+    guvenlik_sorusu?: string;
+    guvenlik_cevabi?: string;
+    adres?: string;
+    calisma_modeli?: string;
+    hijyen_belgesi_durumu?: string;
+    esnaf_muafiyet_durumu?: string;
+    belgeler?: any;
+    sozlesme_onayli?: boolean;
+    kvkk_onayli?: boolean;
+  }
 ): Promise<Kullanici | null> {
   const dogrulama = telefonGecerliMi(yeniKullanici.telefon);
   if (!dogrulama.gecerli) {
@@ -46,34 +69,101 @@ export async function veritabaninaKullaniciKaydet(
   const sifreMetni = yeniKullanici.sifre || '1234';
   const duzgunTelefon = standartTelefon.startsWith('0') ? standartTelefon : `0${standartTelefon}`;
   const kimlikId = standartTelefon ? `tel_${duzgunTelefon}` : `usr_${Date.now()}`;
+  const simdiIso = new Date().toISOString();
+
+  const hijyenVarMi = yeniKullanici.hijyen_belgesi_durumu === 'evet';
+  const muafiyetVarMi = yeniKullanici.esnaf_muafiyet_durumu === 'evet';
+
+  const basvuruBelgeleri = yeniKullanici.belgeler || {
+    hijyenBelgesiVarMi: hijyenVarMi,
+    hijyenOnayDurumu: hijyenVarMi ? 'onay_bekliyor' : 'yuklenmedi',
+    esnafMuafiyetVarMi: muafiyetVarMi,
+    muafiyetOnayDurumu: muafiyetVarMi ? 'onay_bekliyor' : 'yuklenmedi',
+    sonGuncellemeTarihi: simdiIso,
+  };
+
+  const tamAdres = (yeniKullanici.adres || '').trim() || `${yeniKullanici.ilce || 'Merkez'}, Afyonkarahisar`;
 
   const kullaniciKaydi: any = {
     id: kimlikId,
     kimlik: kimlikId,
     ad_soyad: yeniKullanici.ad_soyad ? yeniKullanici.ad_soyad.trim() : 'İsimsiz',
     telefon: duzgunTelefon,
-    eposta: (yeniKullanici as any).eposta || "", // Boş metin yaptık
+    eposta: (yeniKullanici as any).eposta || '',
     sifre: sifreMetni,
     rol: yeniKullanici.rol,
-    isletme_adi: yeniKullanici.isletme_adi || "", // null yerine "" yaptık
-    arac_tipi: yeniKullanici.arac_tipi || "",     // null yerine "" yaptık
+    isletme_adi: yeniKullanici.isletme_adi || '',
+    arac_tipi: yeniKullanici.arac_tipi || '',
     ilce: yeniKullanici.ilce || 'Merkez',
-    onayli_mi: yeniKullanici.rol === 'musteri', // Müşteriler doğrudan onaylı, mutfak ve kuryeler patron onayı bekler!
+    adres: tamAdres,
+    calisma_modeli: yeniKullanici.calisma_modeli || 'sadece_site_uygulama',
+    hijyen_belgesi_durumu: yeniKullanici.hijyen_belgesi_durumu || 'hayir_alacagim',
+    esnaf_muafiyet_durumu: yeniKullanici.esnaf_muafiyet_durumu || 'hayir_alacagim',
+    guvenlik_sorusu: (yeniKullanici.guvenlik_sorusu || '').trim(),
+    guvenlik_cevabi: guvenlikCevabiniStandartlastir(yeniKullanici.guvenlik_cevabi || ''),
+    onayli_mi: yeniKullanici.rol === 'musteri',
     onay_durumu: yeniKullanici.rol === 'musteri' ? 'onaylandi' : 'beklemede',
     askida_mi: false,
-    olusturma_tarihi: new Date().toISOString(),
+    olusturma_tarihi: simdiIso,
   };
 
   // Yerel test deposuna her zaman kaydet
   testKullaniciEkle(kullaniciKaydi as unknown as TestKullaniciKaydi);
 
+  // Yasal Sözleşme Onay Loglarını Kaydet
+  if (yeniKullanici.sozlesme_onayli || yeniKullanici.kvkk_onayli) {
+    try {
+      const sozlesmeler = hukukiSozlesmeleriGetir();
+      if (yeniKullanici.sozlesme_onayli) {
+        hukukiLogKaydet({
+          sozlesmeTuru: 'mutfak_kayit_sozlesmesi',
+          sozlesmeVersiyonu: sozlesmeler.mutfak_kayit_sozlesmesi?.versiyon || '1.0.0',
+          kullaniciKimlik: kimlikId,
+          kullaniciTelefon: duzgunTelefon,
+          kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
+          islemTuru: 'kayit',
+          onaylandiMi: true,
+        });
+      }
+      if (yeniKullanici.kvkk_onayli) {
+        hukukiLogKaydet({
+          sozlesmeTuru: 'kvkk_aydinlatma',
+          sozlesmeVersiyonu: sozlesmeler.kvkk_aydinlatma?.versiyon || '1.0.0',
+          kullaniciKimlik: kimlikId,
+          kullaniciTelefon: duzgunTelefon,
+          kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
+          islemTuru: 'kayit',
+          onaylandiMi: true,
+        });
+      }
+    } catch (hata) {
+      console.warn('Hukuki onay logu kaydedilemedi:', hata);
+    }
+  }
+
   // Patron Canlı Bildirimi Tetikle
   if (yeniKullanici.rol === 'musteri') {
     patronBildirimiEkle('yeni_musteri', 'Yeni Müşteri Kaydı', `${kullaniciKaydi.ad_soyad} (${kullaniciKaydi.telefon}) sisteme üye oldu.`);
   } else if (yeniKullanici.rol === 'ev_mutfagi' || yeniKullanici.rol === 'ticari_restoran') {
-    patronBildirimiEkle('yeni_mutfak', 'Yeni Mutfak Başvurusu ⚠️', `${kullaniciKaydi.isletme_adi || kullaniciKaydi.ad_soyad} mutfak kaydı oluşturdu. Onay bekliyor.`, kimlikId);
-    if (!(yeniKullanici as any).hijyen_onayli_mi) {
-      patronBildirimiEkle('eksik_belge', 'Mutfak Hijyen Belgesi Eksik ⚠️', `${kullaniciKaydi.isletme_adi || kullaniciKaydi.ad_soyad} mutfağının hijyen / yasal evrakları eksik. İnceleyin.`, kimlikId);
+    const modelEtiketi =
+      kullaniciKaydi.calisma_modeli === 'her_ikisi'
+        ? 'Her İkisi de (Şube + Site/Uygulama)'
+        : kullaniciKaydi.calisma_modeli === 'sube_tedarikcisi'
+        ? 'Şube Tedarikçisi'
+        : 'Sadece Site/Uygulama';
+    patronBildirimiEkle(
+      'yeni_mutfak',
+      'Yeni Mutfak Başvurusu ⚠️',
+      `${kullaniciKaydi.isletme_adi || kullaniciKaydi.ad_soyad} (${modelEtiketi}) mutfak kaydı oluşturdu. Onay bekliyor.`,
+      kimlikId
+    );
+    if (!hijyenVarMi || !muafiyetVarMi) {
+      patronBildirimiEkle(
+        'eksik_belge',
+        'Mutfak Hijyen / Esnaf Belgesi Kontrolü ⚠️',
+        `${kullaniciKaydi.isletme_adi || kullaniciKaydi.ad_soyad} mutfağının resmi evrak beyanını inceleyin.`,
+        kimlikId
+      );
     }
   } else if (yeniKullanici.rol === 'kurye') {
     patronBildirimiEkle('yeni_kurye', 'Yeni Kurye Başvurusu 🛵', `${kullaniciKaydi.ad_soyad} kurye olmak için başvurdu. Onay bekliyor.`, kimlikId);
@@ -83,12 +173,13 @@ export async function veritabaninaKullaniciKaydet(
   if (canliFirebaseAktifMi()) {
     try {
       await belgeKaydet('kullanicilar', kimlikId, kullaniciKaydi);
-      
+
       // Eğer mutfak ise mutfaklar koleksiyonuna ekle (Onay Bekliyor statüsünde)
       if (yeniKullanici.rol === 'ev_mutfagi' || yeniKullanici.rol === 'ticari_restoran') {
-        const mutfakIsmi = (yeniKullanici.isletme_adi && yeniKullanici.isletme_adi.trim() !== '') 
-          ? yeniKullanici.isletme_adi.trim() 
-          : yeniKullanici.ad_soyad.trim();
+        const mutfakIsmi =
+          yeniKullanici.isletme_adi && yeniKullanici.isletme_adi.trim() !== ''
+            ? yeniKullanici.isletme_adi.trim()
+            : yeniKullanici.ad_soyad.trim();
 
         await belgeKaydet('mutfaklar', kimlikId, {
           id: kimlikId,
@@ -96,9 +187,11 @@ export async function veritabaninaKullaniciKaydet(
           ad: mutfakIsmi,
           mutfak_adi: mutfakIsmi,
           aciklama: 'Afyonkarahisar anne eliyle taze pişirilen sıcak ev lezzetleri.',
-          adres: `${yeniKullanici.ilce || 'Merkez'}, Afyonkarahisar`,
+          adres: tamAdres,
+          ilce: yeniKullanici.ilce || 'Merkez',
           mahalle: `${yeniKullanici.ilce || 'Merkez'}, Afyonkarahisar`,
           telefon: standartTelefon,
+          calisma_modeli: kullaniciKaydi.calisma_modeli,
           min_siparis_tutari: 100,
           hazirlanma_suresi: '25-35 dk',
           calisma_saatleri: '09:00 - 21:00',
@@ -106,13 +199,13 @@ export async function veritabaninaKullaniciKaydet(
           puan: 5.0,
           gorsel_url: '/assets/aistudio/image_48081a60_bc73ebae.jpg',
           sahip_id: kimlikId,
-          onayli_mi: false, // Patron onayı bekliyor!
+          onayli_mi: false,
           onay_durumu: 'beklemede',
           askida_mi: false,
           hijyen_onayli_mi: false,
           esnaf_muafiyet_onayli_mi: false,
-          belgeler: (yeniKullanici as any).belgeler || {},
-          olusturma_tarihi: new Date().toISOString()
+          belgeler: basvuruBelgeleri,
+          olusturma_tarihi: simdiIso,
         });
       }
     } catch (hata) {

@@ -8,6 +8,7 @@ export interface AfyonMutfakAndroidArayuzu {
   ) => void;
   oturumKapat?: () => void;
   zilSustur?: () => void;
+  zilAyarla?: (seciliKimlik: string, sesSeviyesi: number, ozelSesVeriUrl: string) => void;
   pilOptimizasyonuIste?: () => void;
   uygulamaSurumu?: () => string;
   apkGuncelleIndirVeKur?: (indirmeUrl: string) => void;
@@ -75,5 +76,20 @@ export function androidZilSustur() {
   if (typeof window === 'undefined') return;
   try {
     window.AfyonMutfakAndroid?.zilSustur?.();
+  } catch {}
+}
+
+export function androidZilAyarla(
+  seciliKimlik: string,
+  sesSeviyesi: number,
+  ozelSesVeriUrl = ''
+) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.AfyonMutfakAndroid?.zilAyarla?.(
+      seciliKimlik || 'enerjik_siparis',
+      Math.max(0.2, Math.min(1, Number(sesSeviyesi) || 0.9)),
+      ozelSesVeriUrl || ''
+    );
   } catch {}
 }

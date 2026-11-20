@@ -7,10 +7,22 @@
       "properties": {
         "kimlik": { "type": "string" },
         "isletme_adi": { "type": "string" },
+        "mutfak_adi": { "type": "string" },
+        "aciklama": { "type": "string", "maxLength": 180 },
+        "hazirlanma_suresi": { "type": "string" },
+        "calisma_saatleri": { "type": "string" },
+        "mahalle": { "type": "string" },
         "acik_mi": { "type": "boolean" },
         "min_siparis_tutari": { "type": "number" },
         "mola_durumu": { "type": "boolean" },
-        "mola_bitis_zamani": { "type": "string" }
+        "mola_bitis_zamani": { "type": "string" },
+        "calisma_modeli": { "type": "string" },
+        "ilce": { "type": "string" },
+        "adres": { "type": "string" },
+        "onayli_mi": { "type": "boolean" },
+        "onay_durumu": { "type": "string" },
+        "askida_mi": { "type": "boolean" },
+        "belgeler": { "type": "object" }
       }
     },
     "Yemek": {
@@ -54,9 +66,35 @@
         "stokta_var_mi": { "type": "boolean" },
         "onay_durumu": { "type": "string" }
       }
+    },
+    "Kullanici": {
+      "title": "Kullanici",
+      "description": "Müşteri, ev mutfağı, kurye ve yönetici hesapları",
+      "type": "object",
+      "properties": {
+        "kimlik": { "type": "string" },
+        "ad_soyad": { "type": "string" },
+        "telefon": { "type": "string" },
+        "rol": { "type": "string" },
+        "isletme_adi": { "type": "string" },
+        "guvenlik_sorusu": { "type": "string" },
+        "guvenlik_cevabi": { "type": "string" },
+        "calisma_modeli": { "type": "string" },
+        "ilce": { "type": "string" },
+        "adres": { "type": "string" },
+        "hijyen_belgesi_durumu": { "type": "string" },
+        "esnaf_muafiyet_durumu": { "type": "string" },
+        "onayli_mi": { "type": "boolean" },
+        "onay_durumu": { "type": "string" },
+        "askida_mi": { "type": "boolean" }
+      }
     }
   },
   "firestore": {
+    "/kullanicilar/{kullaniciId}": {
+      "schema": "Kullanici",
+      "description": "Sistem kullanıcı hesapları"
+    },
     "/mutfaklar/{mutfakId}": {
       "schema": "Mutfak",
       "description": "Kayıtlı ev mutfakları"

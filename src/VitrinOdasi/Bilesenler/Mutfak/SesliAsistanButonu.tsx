@@ -30,7 +30,7 @@ export const SesliAsistanButonu: React.FC = () => {
     sesliAsistanAyarla(yeni);
 
     if (yeni) {
-      mutfakSesliAnonsYap('Sesli mutfak asistanı aktif edildi.');
+      mutfakSesliAnonsYap('Sesli mutfak asistanı aktif edildi.', { anindaKonus: true });
     }
   };
 
