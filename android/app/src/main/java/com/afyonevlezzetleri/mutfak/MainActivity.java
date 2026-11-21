@@ -233,6 +233,7 @@ public class MainActivity extends Activity {
         if (kucuk.endsWith(".jpg") || kucuk.endsWith(".jpeg")) return "image/jpeg";
         if (kucuk.endsWith(".webp")) return "image/webp";
         if (kucuk.endsWith(".mp3")) return "audio/mpeg";
+        if (kucuk.endsWith(".wav")) return "audio/wav";
         if (kucuk.endsWith(".woff2")) return "font/woff2";
         if (kucuk.endsWith(".woff")) return "font/woff";
         return "application/octet-stream";
@@ -285,6 +286,24 @@ public class MainActivity extends Activity {
             Intent sustur = new Intent(MainActivity.this, SiparisDinleyiciServisi.class);
             sustur.setAction(SiparisDinleyiciServisi.ACTION_SUSTUR);
             startService(sustur);
+        }
+
+        @JavascriptInterface
+        public void zilCal(String baslik, String detay, boolean kesintisiz, int sureSn) {
+            try {
+                Intent cal = new Intent(MainActivity.this, SiparisDinleyiciServisi.class);
+                cal.setAction(SiparisDinleyiciServisi.ACTION_ANLIK_CAL);
+                cal.putExtra("baslik", baslik != null ? baslik : "🚨 YENİ MUTFAK SİPARİŞİ!");
+                cal.putExtra("detay", detay != null ? detay : "Yeni sipariş geldi — Hemen onaylayın!");
+                cal.putExtra("kesintisiz", kesintisiz);
+                cal.putExtra("sure_sn", sureSn);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(cal);
+                } else {
+                    startService(cal);
+                }
+            } catch (Throwable ignored) {
+            }
         }
 
         @JavascriptInterface

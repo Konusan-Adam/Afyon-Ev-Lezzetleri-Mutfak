@@ -8,6 +8,7 @@ export interface AfyonMutfakAndroidArayuzu {
   ) => void;
   oturumKapat?: () => void;
   zilSustur?: () => void;
+  zilCal?: (baslik: string, detay: string, kesintisiz: boolean, sureSn: number) => void;
   zilAyarla?: (seciliKimlik: string, sesSeviyesi: number, ozelSesVeriUrl: string) => void;
   pilOptimizasyonuIste?: () => void;
   uygulamaSurumu?: () => string;
@@ -76,6 +77,23 @@ export function androidZilSustur() {
   if (typeof window === 'undefined') return;
   try {
     window.AfyonMutfakAndroid?.zilSustur?.();
+  } catch {}
+}
+
+export function androidZilCal(
+  baslik: string,
+  detay: string,
+  kesintisiz = true,
+  sureSn = 5
+) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.AfyonMutfakAndroid?.zilCal?.(
+      baslik || '🚨 YENİ MUTFAK SİPARİŞİ!',
+      detay || 'Yeni sipariş geldi — Hemen onaylayın!',
+      kesintisiz,
+      Math.max(2, Math.round(sureSn))
+    );
   } catch {}
 }
 

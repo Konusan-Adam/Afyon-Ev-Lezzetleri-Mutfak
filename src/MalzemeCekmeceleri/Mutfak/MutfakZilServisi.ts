@@ -7,6 +7,7 @@ import {
   seciliZilKimliginiGetir,
   zilSesSeviyesiniGetir,
 } from './MutfakZilMelodileri';
+import { androidZilCal, androidZilSustur } from './AndroidKopruServisi';
 
 let ortakAudioContext: AudioContext | null = null;
 let ortakZilAudio: HTMLAudioElement | null = null;
@@ -95,6 +96,7 @@ export function mutfakZiliDurdur() {
   suAnKesintisizCaliyorMu = false;
   calinmaBildir(false);
   sekmeAlarmiDurdur();
+  androidZilSustur();
 }
 
 function ortakSesNesneleriniHazirla() {
@@ -310,8 +312,13 @@ export const mutfakZiliCal = (
 ) => {
   const kesintisiz = secenekler?.kesintisiz ?? false;
   const sureMs = Math.max(1500, Math.round((secenekler?.sureSn ?? 5) * 1000));
+  const bildirimBaslik = baslik || '🔔 YENİ MUTFAK SİPARİŞİ!';
+  const bildirimDetay = detay || 'Yeni taze sipariş düştü! Onaylamak için tıklayın.';
 
   sekmeAlarmiBaslat('🚨 (1) YENİ SİPARİŞ GELİYOR!');
+
+  // Android yerel sisteme anında sesli ve yazılı bildirim gönder
+  androidZilCal(bildirimBaslik, bildirimDetay, kesintisiz, Math.round(sureMs / 1000));
 
   tumZamanlayicilariTemizle();
   tumAudioElementleriniDurdur();

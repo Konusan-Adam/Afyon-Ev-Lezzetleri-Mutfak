@@ -23,6 +23,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -40,6 +41,7 @@ public class SiparisDinleyiciServisi extends Service {
     public static final String ACTION_BASLAT = "com.afyonevlezzetleri.mutfak.BASLAT";
     public static final String ACTION_SUSTUR = "com.afyonevlezzetleri.mutfak.SUSTUR";
     public static final String ACTION_DURDUR = "com.afyonevlezzetleri.mutfak.DURDUR";
+    public static final String ACTION_ANLIK_CAL = "com.afyonevlezzetleri.mutfak.ANLIK_CAL";
 
     private static final String KANAL_SERVIS_ID = "afyon_mutfak_servis_v1";
     private static final String KANAL_ALARM_ID = "afyon_mutfak_alarm_v1";
@@ -84,6 +86,20 @@ public class SiparisDinleyiciServisi extends Service {
             bildirimiKaldir();
             durdurVeKapat();
             return START_NOT_STICKY;
+        }
+
+        if (ACTION_ANLIK_CAL.equals(action)) {
+            String baslik = intent != null ? intent.getStringExtra("baslik") : null;
+            String detay = intent != null ? intent.getStringExtra("detay") : null;
+            boolean kesintisiz = intent == null || intent.getBooleanExtra("kesintisiz", true);
+            int sureSn = intent != null ? intent.getIntExtra("sure_sn", 5) : 5;
+            if (baslik == null || baslik.isEmpty()) baslik = "🚨 YENİ MUTFAK SİPARİŞİ!";
+            if (detay == null || detay.isEmpty()) detay = "Yeni sipariş geldi — Hemen onaylayın!";
+            wakeLockAl();
+            sireniCal(kesintisiz ? 300 : Math.max(2, sureSn));
+            titret();
+            yuksekOncelikliBildirimGosterOzel(baslik, detay);
+            return START_STICKY;
         }
 
         SharedPreferences prefs = getSharedPreferences(PREFS_ADI, Context.MODE_PRIVATE);
@@ -160,15 +176,24 @@ public class SiparisDinleyiciServisi extends Service {
 
         String endpoint = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID
                 + "/databases/" + FIRESTORE_DB_ID
-                + "/documents/siparisler?pageSize=100&key=" + FIREBASE_API_KEY;
+                + "/documents:runQuery?key=" + FIREBASE_API_KEY;
 
         HttpURLConnection conn = null;
         try {
             URL url = new URL(endpoint);
             conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
             conn.setConnectTimeout(9000);
             conn.setReadTimeout(9000);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+            String sorguGovde = "{\"structuredQuery\":{\"from\":[{\"collectionId\":\"siparisler\"}],\"limit\":100}}";
+            byte[] govdeBayt = sorguGovde.getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(govdeBayt);
+                os.flush();
+            }
 
             int code = conn.getResponseCode();
             if (code != 200) return;
@@ -183,16 +208,13 @@ public class SiparisDinleyiciServisi extends Service {
             }
             reader.close();
 
-            JSONObject root = new JSONObject(sb.toString());
-            JSONArray docs = root.optJSONArray("documents");
-            if (docs == null) {
-                ilkYukleme = false;
-                return;
-            }
+            JSONArray sonuclar = new JSONArray(sb.toString());
 
             if (ilkYukleme) {
-                for (int i = 0; i < docs.length(); i++) {
-                    String docId = docIdCikar(docs.optJSONObject(i));
+                for (int i = 0; i < sonuclar.length(); i++) {
+                    JSONObject satir = sonuclar.optJSONObject(i);
+                    JSONObject doc = satir != null ? satir.optJSONObject("document") : null;
+                    String docId = docIdCikar(doc);
                     if (!docId.isEmpty()) bilinenSiparisIdleri.add(docId);
                 }
                 ilkYukleme = false;
@@ -201,8 +223,9 @@ public class SiparisDinleyiciServisi extends Service {
 
             boolean aktifAlarmHalaBeklemede = false;
 
-            for (int i = 0; i < docs.length(); i++) {
-                JSONObject doc = docs.optJSONObject(i);
+            for (int i = 0; i < sonuclar.length(); i++) {
+                JSONObject satir = sonuclar.optJSONObject(i);
+                JSONObject doc = satir != null ? satir.optJSONObject("document") : null;
                 if (doc == null) continue;
                 String docId = docIdCikar(doc);
                 if (docId.isEmpty()) continue;
@@ -219,8 +242,26 @@ public class SiparisDinleyiciServisi extends Service {
                         || (sipMutfakId.isEmpty() && varsayilanMutfak)
                         || gecerliKimlikler.contains(sipMutfakId);
 
-                if (aktifAlarmSiparisId != null && aktifAlarmSiparisId.equals(docId) && "beklemede".equals(durum)) {
+                boolean beklemedeMi = "beklemede".equals(durum);
+                if (mutfakUygun && beklemedeMi) {
                     aktifAlarmHalaBeklemede = true;
+                    if (!uygulamaOnPlanda && (alarmOynatici == null || !alarmOynatici.isPlaying())) {
+                        String kod = alanMetin(fields, "siparis_kodu");
+                        if (kod.isEmpty()) kod = alanMetin(fields, "siparisKodu");
+                        if (kod.isEmpty()) kod = docId;
+
+                        String musteri = alanMetin(fields, "musteri_adi");
+                        if (musteri.isEmpty()) musteri = "Müşteri";
+
+                        double tutar = alanSayi(fields, "toplam_tutar");
+                        if (tutar <= 0) tutar = alanSayi(fields, "tutar");
+
+                        aktifAlarmSiparisId = docId;
+                        wakeLockAl();
+                        sireniCal(300);
+                        titret();
+                        yuksekOncelikliBildirimGoster(kod, musteri, tutar);
+                    }
                 }
 
                 if (!bilinenSiparisIdleri.contains(docId)) {
@@ -238,7 +279,7 @@ public class SiparisDinleyiciServisi extends Service {
                         if (tutar <= 0) tutar = alanSayi(fields, "tutar");
 
                         aktifAlarmSiparisId = docId;
-                        aktifAlarmHalaBeklemede = true;
+                        aktifAlarmHalaBeklemede = beklemedeMi;
                         alarmTetikle(kod, musteri, tutar);
                     }
                 }
@@ -256,16 +297,15 @@ public class SiparisDinleyiciServisi extends Service {
     }
 
     private void alarmTetikle(String siparisKodu, String musteriAdi, double tutar) {
-        if (uygulamaOnPlanda) {
-            return;
-        }
         wakeLockAl();
-        sireniCal();
+        if (!uygulamaOnPlanda) {
+            sireniCal(300);
+        }
         titret();
         yuksekOncelikliBildirimGoster(siparisKodu, musteriAdi, tutar);
     }
 
-    private synchronized void sireniCal() {
+    private synchronized void sireniCal(int maksimumSureSn) {
         try {
             alarmiSustur();
             SharedPreferences prefs = getSharedPreferences(PREFS_ADI, Context.MODE_PRIVATE);
@@ -311,16 +351,17 @@ public class SiparisDinleyiciServisi extends Service {
             alarmOynatici.prepare();
             alarmOynatici.start();
 
-            // Mutfak onaylayana veya reddedene kadar çalar (aşırı pil tükenmesini önlemek için 5 dakika maksimum güvenlik sınırı)
-            if (durdurZamanlayici == null || durdurZamanlayici.isShutdown()) {
-                durdurZamanlayici = Executors.newSingleThreadScheduledExecutor();
+            // Mutfak onaylayana veya reddedene kadar çalar (varsayılan maksimum güvenlik sınırı)
+            if (durdurZamanlayici != null && !durdurZamanlayici.isShutdown()) {
+                durdurZamanlayici.shutdownNow();
             }
+            durdurZamanlayici = Executors.newSingleThreadScheduledExecutor();
             durdurZamanlayici.schedule(new Runnable() {
                 @Override
                 public void run() {
                     alarmiSustur();
                 }
-            }, 300, TimeUnit.SECONDS);
+            }, Math.max(2, maksimumSureSn), TimeUnit.SECONDS);
         } catch (Throwable ignored) {
         }
     }
@@ -378,6 +419,12 @@ public class SiparisDinleyiciServisi extends Service {
     }
 
     private void yuksekOncelikliBildirimGoster(String siparisKodu, String musteriAdi, double tutar) {
+        String tutarMetni = tutar > 0 ? (" (" + Math.round(tutar) + " ₺)") : "";
+        String icerik = "#" + siparisKodu + " • " + musteriAdi + tutarMetni + " — Hemen onaylayın!";
+        yuksekOncelikliBildirimGosterOzel("🚨 YENİ MUTFAK SİPARİŞİ!", icerik);
+    }
+
+    private void yuksekOncelikliBildirimGosterOzel(String baslik, String icerik) {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
 
@@ -396,15 +443,12 @@ public class SiparisDinleyiciServisi extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        String tutarMetni = tutar > 0 ? (" (" + Math.round(tutar) + " ₺)") : "";
-        String icerik = "#" + siparisKodu + " • " + musteriAdi + tutarMetni + " — Hemen onaylayın!";
-
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, KANAL_ALARM_ID)
                 : new Notification.Builder(this);
 
         builder.setSmallIcon(R.drawable.ic_stat_mutfak)
-                .setContentTitle("🚨 YENİ MUTFAK SİPARİŞİ!")
+                .setContentTitle(baslik)
                 .setContentText(icerik)
                 .setStyle(new Notification.BigTextStyle().bigText(icerik))
                 .setContentIntent(acPending)
