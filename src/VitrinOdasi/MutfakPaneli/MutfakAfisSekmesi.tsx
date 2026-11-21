@@ -21,6 +21,12 @@ import {
 } from 'lucide-react';
 import { useMutfakAfisi } from '@/src/MalzemeCekmeceleri/Mutfak/useMutfakAfisi';
 import { sunucuyaGorselYukle, gorselUrlGuvenliYap } from '@/src/MalzemeCekmeceleri/sunucuGorselYukleyici';
+import {
+  AfisBoyutAnalizi,
+  dosyaGorselOlcusuAl,
+  gorselOlculeriniAnalizEt,
+} from '@/src/MalzemeCekmeceleri/Mutfak/AfisGorselBoyutAnalizi';
+import { AfisBoyutBilgiKutusu } from './AfisBoyutBilgiKutusu';
 
 interface MutfakAfisSekmesiProps {
   mutfakId: string;
@@ -57,6 +63,7 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
   const [gorselModu, setGorselModu] = useState<'dosya' | 'url'>('dosya');
   const [urlGirdisi, setUrlGirdisi] = useState('');
   const [gorselYukleniyor, setGorselYukleniyor] = useState(false);
+  const [boyutAnalizi, setBoyutAnalizi] = useState<AfisBoyutAnalizi | null>(null);
   const [silmeOnayiAcik, setSilmeOnayiAcik] = useState(false);
   const [basariMesaji, setBasariMesaji] = useState<string | null>(null);
   const [hataMesaji, setHataMesaji] = useState<string | null>(null);
@@ -86,6 +93,10 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
     setGorselYukleniyor(true);
 
     try {
+      const olculer = await dosyaGorselOlcusuAl(dosya);
+      if (olculer) {
+        setBoyutAnalizi(gorselOlculeriniAnalizEt(olculer.genislik, olculer.yukseklik));
+      }
       const sonuc = await sunucuyaGorselYukle(dosya, 'afisler');
       if (sonuc.basarili && sonuc.url) {
         setGorselUrl(sonuc.url);
@@ -107,6 +118,7 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
       return;
     }
     setHataMesaji(null);
+    setBoyutAnalizi(null);
     setGorselUrl(temiz);
   };
 
@@ -221,6 +233,7 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
       setAciklama('');
       setGorselUrl('');
       setUrlGirdisi('');
+      setBoyutAnalizi(null);
       setKonumY(50);
       setOrijinalKonumY(50);
       setKonumlandirmaModu(false);
@@ -452,6 +465,8 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
                 </button>
               </div>
             )}
+
+            <AfisBoyutBilgiKutusu analiz={boyutAnalizi} />
           </div>
 
           <div className="flex items-center justify-between p-3 rounded-xl bg-[#120614] border border-purple-900/50">
@@ -564,6 +579,12 @@ export const MutfakAfisSekmesi: React.FC<MutfakAfisSekmesiProps> = ({
                   src={gorselUrlGuvenliYap(gorselUrl)}
                   alt="Mutfak Afiş Önizleme"
                   draggable={false}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                      setBoyutAnalizi(gorselOlculeriniAnalizEt(img.naturalWidth, img.naturalHeight));
+                    }
+                  }}
                   className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-[object-position] duration-75"
                   style={{ objectPosition: `center ${konumY}%` }}
                 />
