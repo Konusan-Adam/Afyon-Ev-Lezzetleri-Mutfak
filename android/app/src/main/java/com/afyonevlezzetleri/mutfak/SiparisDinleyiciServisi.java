@@ -96,7 +96,10 @@ public class SiparisDinleyiciServisi extends Service {
             if (baslik == null || baslik.isEmpty()) baslik = "🚨 YENİ MUTFAK SİPARİŞİ!";
             if (detay == null || detay.isEmpty()) detay = "Yeni sipariş geldi — Hemen onaylayın!";
             wakeLockAl();
-            sireniCal(kesintisiz ? 300 : Math.max(2, sureSn));
+            // Ekran açıkken ses WebView tarafından çalındığı için mükerrer ses engellenir; sadece kapalıyken çalar
+            if (!uygulamaOnPlanda && (alarmOynatici == null || !alarmOynatici.isPlaying())) {
+                sireniCal(kesintisiz ? 300 : Math.max(2, sureSn));
+            }
             titret();
             yuksekOncelikliBildirimGosterOzel(baslik, detay);
             return START_STICKY;
@@ -298,7 +301,7 @@ public class SiparisDinleyiciServisi extends Service {
 
     private void alarmTetikle(String siparisKodu, String musteriAdi, double tutar) {
         wakeLockAl();
-        if (!uygulamaOnPlanda) {
+        if (!uygulamaOnPlanda && (alarmOynatici == null || !alarmOynatici.isPlaying())) {
             sireniCal(300);
         }
         titret();
