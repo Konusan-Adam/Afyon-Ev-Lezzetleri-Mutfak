@@ -32,7 +32,7 @@ import {
 import { MutfakSozlesmeOkumaModali } from './MutfakSozlesmeOkumaModali';
 
 export const MutfakGirisEkrani: React.FC = () => {
-  const { girisYap, kayitOl, yukleniyor } = kullaniciHafizasiKullan();
+  const { girisYapDetayli, kayitOl, yukleniyor } = kullaniciHafizasiKullan();
   const [mod, setMod] = useState<'giris' | 'kayit'>('giris');
 
   const [telefon, setTelefon] = useState('');
@@ -79,9 +79,11 @@ export const MutfakGirisEkrani: React.FC = () => {
       return;
     }
 
-    const basarili = await girisYap(telefon.trim(), sifre.trim());
-    if (!basarili) {
-      setHataMesaji('Giriş başarısız! Telefon numarası veya şifre hatalı, lütfen kontrol edin.');
+    const sonuc = await girisYapDetayli(telefon.trim(), sifre.trim());
+    if (!sonuc.basarili) {
+      setHataMesaji(
+        sonuc.hataMesaji || 'Giriş başarısız! Telefon numarası veya şifre hatalı, lütfen kontrol edin.'
+      );
     }
   };
 

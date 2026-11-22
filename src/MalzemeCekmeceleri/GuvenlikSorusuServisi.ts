@@ -1,10 +1,11 @@
 import { Kullanici } from '@/src/veritabani/VeriTipleri';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
+import { belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import {
-  belgeGetir,
-  belgeKaydet,
-  koleksiyonGetir,
-} from '@/src/veritabani/FirebaseKoleksiyonServisi';
+  mutfakKullanicisiniSorgula,
+  mutfakRoluMu,
+  YETKISIZ_ROL_UYARISI,
+} from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 import { telefonGecerliMi } from './Dogrulama/telefonDogrulayici';
 
 export const GUVENLIK_SORULARI = [
@@ -48,25 +49,37 @@ export function guvenlikCevabiniStandartlastir(cevap: string): string {
   return (cevap || '').trim().toLocaleLowerCase('tr-TR');
 }
 
-async function telefonIleKullaniciBul(standartTelefon: string): Promise<any | null> {
-  if (!canliFirebaseAktifMi()) return null;
+const MAX_HATALI_DENEME = 5;
+const KILIT_SURESI_MS = 5 * 60 * 1000;
+const DENEME_KAYIT_ANAHTARI = 'afyon_guvenlik_sorusu_deneme_v1';
 
-  const duzgunTelefon = standartTelefon.startsWith('0')
-    ? standartTelefon
-    : `0${standartTelefon}`;
-  const olasiBelgeKimligi = `tel_${duzgunTelefon}`;
+interface DenemeDurumu {
+  hataliSayisi: number;
+  kilitBitisZamani: number;
+}
 
-  const dogrudanBelge = await belgeGetir<any>('kullanicilar', olasiBelgeKimligi);
-  if (dogrudanBelge) {
-    return dogrudanBelge;
+function denemeDurumuGetir(standartTelefon: string): DenemeDurumu {
+  try {
+    if (typeof localStorage === 'undefined') return { hataliSayisi: 0, kilitBitisZamani: 0 };
+    const ham = localStorage.getItem(`${DENEME_KAYIT_ANAHTARI}_${standartTelefon}`);
+    return ham ? JSON.parse(ham) : { hataliSayisi: 0, kilitBitisZamani: 0 };
+  } catch {
+    return { hataliSayisi: 0, kilitBitisZamani: 0 };
   }
+}
 
-  const tumKullanicilar = await koleksiyonGetir<any>('kullanicilar');
-  return (
-    tumKullanicilar.find(
-      (k) => telefonRakamlariniTemizle(k.telefon || '') === standartTelefon
-    ) || null
-  );
+function denemeDurumuKaydet(standartTelefon: string, durum: DenemeDurumu): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(`${DENEME_KAYIT_ANAHTARI}_${standartTelefon}`, JSON.stringify(durum));
+  } catch {}
+}
+
+function denemeDurumuTemizle(standartTelefon: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(`${DENEME_KAYIT_ANAHTARI}_${standartTelefon}`);
+  } catch {}
 }
 
 export async function kullaniciGuvenlikSorusuGetir(
@@ -85,12 +98,22 @@ export async function kullaniciGuvenlikSorusuGetir(
   const standartTelefon = telefonRakamlariniTemizle(telefon);
 
   try {
-    const bulunan = await telefonIleKullaniciBul(standartTelefon);
+    const { kullanici: bulunan, yetkisizRolVarMi } = await mutfakKullanicisiniSorgula(standartTelefon);
     if (!bulunan) {
       return {
         basarili: false,
         bulundu: false,
-        hataMesaji: 'Bu telefon numarası ile kayıtlı bir mutfak hesabı bulunamadı.',
+        hataMesaji: yetkisizRolVarMi
+          ? YETKISIZ_ROL_UYARISI
+          : 'Bu telefon numarası ile kayıtlı bir mutfak hesabı bulunamadı.',
+      };
+    }
+
+    if (!mutfakRoluMu(bulunan.rol)) {
+      return {
+        basarili: false,
+        bulundu: false,
+        hataMesaji: YETKISIZ_ROL_UYARISI,
       };
     }
 
@@ -159,13 +182,30 @@ export async function sifreSifirlaGuvenlikSorusuIle(
   }
 
   const standartTelefon = telefonRakamlariniTemizle(telefon);
+  const mevcutDeneme = denemeDurumuGetir(standartTelefon);
+  if (mevcutDeneme.kilitBitisZamani > Date.now()) {
+    const kalanDakika = Math.max(1, Math.ceil((mevcutDeneme.kilitBitisZamani - Date.now()) / 60000));
+    return {
+      basarili: false,
+      hataMesaji: `Çok fazla hatalı deneme yapıldı. Güvenlik için ${kalanDakika} dakika sonra tekrar deneyiniz.`,
+    };
+  }
 
   try {
-    const bulunan = await telefonIleKullaniciBul(standartTelefon);
+    const { kullanici: bulunan, yetkisizRolVarMi } = await mutfakKullanicisiniSorgula(standartTelefon);
     if (!bulunan) {
       return {
         basarili: false,
-        hataMesaji: 'Bu telefon numarası ile kayıtlı hesap bulunamadı.',
+        hataMesaji: yetkisizRolVarMi
+          ? YETKISIZ_ROL_UYARISI
+          : 'Bu telefon numarası ile kayıtlı yetkili mutfak hesabı bulunamadı.',
+      };
+    }
+
+    if (!mutfakRoluMu(bulunan.rol)) {
+      return {
+        basarili: false,
+        hataMesaji: YETKISIZ_ROL_UYARISI,
       };
     }
 
@@ -181,14 +221,34 @@ export async function sifreSifirlaGuvenlikSorusuIle(
     }
 
     if (temizCevap !== kayitliCevap) {
+      const yeniSayac = (mevcutDeneme.kilitBitisZamani > 0 ? 0 : mevcutDeneme.hataliSayisi) + 1;
+      if (yeniSayac >= MAX_HATALI_DENEME) {
+        denemeDurumuKaydet(standartTelefon, {
+          hataliSayisi: yeniSayac,
+          kilitBitisZamani: Date.now() + KILIT_SURESI_MS,
+        });
+        return {
+          basarili: false,
+          hataMesaji: '5 kez hatalı güvenlik cevabı girildi. Hesap güvenliği için 5 dakika bekleyiniz.',
+        };
+      }
+      denemeDurumuKaydet(standartTelefon, { hataliSayisi: yeniSayac, kilitBitisZamani: 0 });
       return {
         basarili: false,
-        hataMesaji: 'Güvenlik sorusu cevabı hatalı. Lütfen kontrol edip tekrar deneyiniz.',
+        hataMesaji: `Güvenlik sorusu cevabı hatalı. Kalan deneme hakkı: ${MAX_HATALI_DENEME - yeniSayac}`,
       };
     }
 
-    const belgeKimligi =
-      bulunan.id || bulunan.kimlik || `tel_0${standartTelefon}`;
+    denemeDurumuTemizle(standartTelefon);
+
+    const belgeKimligi = bulunan.id || bulunan.kimlik;
+    if (!belgeKimligi || !canliFirebaseAktifMi()) {
+      return {
+        basarili: false,
+        hataMesaji: 'Mutfak hesap kimliği doğrulanamadı.',
+      };
+    }
+
     const guncellendi = await belgeKaydet('kullanicilar', belgeKimligi, {
       sifre: temizYeniSifre,
       guncellenme_zamani: new Date().toISOString(),

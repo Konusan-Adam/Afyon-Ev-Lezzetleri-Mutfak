@@ -20,6 +20,7 @@ import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
 import { koleksiyonGetir, belgeGetir, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
 import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
+import { mutfakRoluMu } from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 import { BelgeGorselYuklemeKutusu } from './BelgeGorselYuklemeKutusu';
 
 interface MutfakBelgelerSekmesiProps {
@@ -84,7 +85,7 @@ export const MutfakBelgelerSekmesi: React.FC<MutfakBelgelerSekmesiProps> = ({
             mutfakId;
           if (kullaniciId) {
             const k = await belgeGetir<any>('kullanicilar', kullaniciId);
-            if (k) kullaniciKaydi = k;
+            if (k && mutfakRoluMu(k.rol)) kullaniciKaydi = k;
           }
         } catch (err) {
           console.warn('Belgeler okunamadı:', err);
@@ -192,11 +193,14 @@ export const MutfakBelgelerSekmesi: React.FC<MutfakBelgelerSekmesiProps> = ({
           aktifKullanici?.kimlik ||
           aktifKullanici?.id ||
           hedefId;
-        if (kullaniciHedefId) {
-          await belgeKaydet('kullanicilar', kullaniciHedefId, {
-            hijyen_belgesi_durumu: sonHijyenBeyan || 'hayir_alacagim',
-            esnaf_muafiyet_durumu: sonMuafiyetBeyan || 'hayir_alacagim',
-          });
+        if (kullaniciHedefId && mutfakRoluMu(aktifKullanici?.rol)) {
+          const mevcutKullanici = await belgeGetir<any>('kullanicilar', kullaniciHedefId);
+          if (mevcutKullanici && mutfakRoluMu(mevcutKullanici.rol)) {
+            await belgeKaydet('kullanicilar', kullaniciHedefId, {
+              hijyen_belgesi_durumu: sonHijyenBeyan || 'hayir_alacagim',
+              esnaf_muafiyet_durumu: sonMuafiyetBeyan || 'hayir_alacagim',
+            });
+          }
         }
       }
 

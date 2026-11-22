@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingBag, CheckCircle2, AlertTriangle, Save, Loader2, Clock, Truck, MapPin, Power, Briefcase, FileText } from 'lucide-react';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
-import { koleksiyonGetir, koleksiyonuCanliDinle, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import { koleksiyonGetir, koleksiyonuCanliDinle, belgeGetir, belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { useKuryeAyarlari } from '@/src/MalzemeCekmeceleri/useKuryeAyarlari';
 import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
+import { mutfakRoluMu } from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 
 interface Props {
   mutfakId: string;
@@ -197,12 +198,15 @@ export const MutfakTeslimatAyarKarti: React.FC<Props> = ({
           aktifKullanici?.kimlik ||
           aktifKullanici?.id ||
           hedefId;
-        if (kullaniciHedefId) {
-          await belgeKaydet('kullanicilar', kullaniciHedefId, {
-            ilce: senkronVeri.ilce,
-            adres: senkronVeri.adres,
-            calisma_modeli: senkronVeri.calisma_modeli,
-          });
+        if (kullaniciHedefId && mutfakRoluMu(aktifKullanici?.rol)) {
+          const mevcutKullanici = await belgeGetir<any>('kullanicilar', kullaniciHedefId);
+          if (mevcutKullanici && mutfakRoluMu(mevcutKullanici.rol)) {
+            await belgeKaydet('kullanicilar', kullaniciHedefId, {
+              ilce: senkronVeri.ilce,
+              adres: senkronVeri.adres,
+              calisma_modeli: senkronVeri.calisma_modeli,
+            });
+          }
         }
         if (aktifKullanici && (aktifKullanici.kimlik === mutfakId || aktifKullanici.id === mutfakId || mutfak?.sahip_id === aktifKullanici.kimlik)) {
           aktifKullaniciBilgisiGuncelle({

@@ -1,11 +1,16 @@
 import { Kullanici } from '@/src/veritabani/VeriTipleri';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
-import { belgeKaydet, koleksiyonGetir } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import { belgeKaydet } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import {
   testKullaniciDogrula,
   testKullaniciEkle,
   TestKullaniciKaydi
 } from '@/src/veritabani/CanliVeriYardimcisi';
+import {
+  mutfakKullanicisiniSorgula,
+  mutfakRoluMu,
+  YETKISIZ_ROL_UYARISI,
+} from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 import { telefonGecerliMi } from './Dogrulama/telefonDogrulayici';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
 import {
@@ -52,15 +57,19 @@ export async function veritabaninaKullaniciKaydet(
     return null;
   }
 
+  if (!mutfakRoluMu(yeniKullanici.rol)) {
+    console.warn('Bu modülden yalnızca mutfak hesabı oluşturulabilir:', yeniKullanici.rol);
+    return null;
+  }
+
   const standartTelefon = telefonTemizle(yeniKullanici.telefon);
 
-  // Aynı telefon numarasıyla ikinci bir kayıt açılmasını kesinlikle engelle
+  // Aynı telefon numarasıyla yalnızca mutfak rolünde ikinci bir kayıt açılmasını engelle; diğer rollere dokunma
   if (canliFirebaseAktifMi()) {
     try {
-      const mevcutlar = await koleksiyonGetir<any>('kullanicilar');
-      const kayitli = mevcutlar.find((k) => telefonTemizle(k.telefon || '') === standartTelefon);
-      if (kayitli) {
-        console.warn('Bu telefon numarası ile zaten kayıtlı bir kullanıcı var:', standartTelefon);
+      const { kullanici: mevcutMutfak } = await mutfakKullanicisiniSorgula(standartTelefon);
+      if (mevcutMutfak) {
+        console.warn('Bu telefon numarası ile zaten kayıtlı bir mutfak hesabı var:', standartTelefon);
         return null;
       }
     } catch {}
@@ -68,7 +77,7 @@ export async function veritabaninaKullaniciKaydet(
 
   const sifreMetni = yeniKullanici.sifre || '1234';
   const duzgunTelefon = standartTelefon.startsWith('0') ? standartTelefon : `0${standartTelefon}`;
-  const kimlikId = standartTelefon ? `tel_${duzgunTelefon}` : `usr_${Date.now()}`;
+  const kimlikId = standartTelefon ? `mutfak_${duzgunTelefon}` : `usr_${Date.now()}`;
   const simdiIso = new Date().toISOString();
 
   const hijyenVarMi = yeniKullanici.hijyen_belgesi_durumu === 'evet';
@@ -89,6 +98,7 @@ export async function veritabaninaKullaniciKaydet(
     kimlik: kimlikId,
     ad_soyad: yeniKullanici.ad_soyad ? yeniKullanici.ad_soyad.trim() : 'İsimsiz',
     telefon: duzgunTelefon,
+    telefon_numarasi: duzgunTelefon,
     eposta: (yeniKullanici as any).eposta || '',
     sifre: sifreMetni,
     rol: yeniKullanici.rol,
@@ -216,57 +226,72 @@ export async function veritabaninaKullaniciKaydet(
   return kullaniciKaydi;
 }
 
-export async function veritabanindanKullaniciGirisYaptir(
+export interface MutfakGirisSonucu {
+  kullanici: Kullanici | null;
+  hataMesaji?: string;
+}
+
+export async function veritabanindanKullaniciGirisYaptirDetayli(
   telefon: string,
   sifre: string
-): Promise<Kullanici | null> {
+): Promise<MutfakGirisSonucu> {
   const dogrulama = telefonGecerliMi(telefon);
   if (!dogrulama.gecerli) {
     console.warn('Geçersiz telefon formatı ile giriş denemesi:', telefon);
-    return null;
+    return {
+      kullanici: null,
+      hataMesaji: dogrulama.hata || 'Lütfen geçerli bir cep telefonu numarası giriniz.',
+    };
   }
 
   const standartTelefon = telefonTemizle(telefon);
   const girilenSifre = sifre.trim();
 
-  // Süper Admin Öncelikli Tanıma
-  if (
-    (standartTelefon === '5325420303' || standartTelefon === '5301234567' || standartTelefon === '5051234567') &&
-    (girilenSifre === '1979' || girilenSifre === '1234')
-  ) {
-    return {
-      kimlik: 'yonetici_patron_01',
-      ad_soyad: 'Aslan Usta (Patron & Süper Admin)',
-      telefon: '05325420303',
-      eposta: 'patron@afyonevlezzetleri.com',
-      rol: 'yonetici',
-      isletme_adi: 'Afyon Ev Lezzetleri Genel Merkez',
-      ilce: 'Merkez',
-      onayli_mi: true,
-      olusturma_tarihi: new Date().toISOString()
-    };
-  }
-
-  // Önce Firebase'den ara (Canlı Otorite)
+  // Önce Firebase'den yalnızca telefon + mutfak rolü şartıyla sorgula (Canlı Otorite)
   if (canliFirebaseAktifMi()) {
     try {
-      const tumKullanicilar = await koleksiyonGetir<Kullanici>('kullanicilar');
-      const bulunan = tumKullanicilar.find((k) => telefonTemizle(k.telefon || '') === standartTelefon);
+      const { kullanici: bulunan, yetkisizRolVarMi } = await mutfakKullanicisiniSorgula(standartTelefon);
       if (bulunan) {
-        if ((bulunan as any).sifre && (bulunan as any).sifre !== girilenSifre && girilenSifre !== '1979') {
-          console.warn('Hatalı şifre girişi:', standartTelefon);
-          return null;
+        if (!mutfakRoluMu(bulunan.rol)) {
+          return { kullanici: null, hataMesaji: YETKISIZ_ROL_UYARISI };
         }
-        return bulunan;
+        if ((bulunan as any).sifre && (bulunan as any).sifre !== girilenSifre) {
+          console.warn('Hatalı şifre girişi:', standartTelefon);
+          return {
+            kullanici: null,
+            hataMesaji: 'Giriş başarısız! Telefon numarası veya şifre hatalı, lütfen kontrol edin.',
+          };
+        }
+        return { kullanici: bulunan as Kullanici };
       }
-      // Firebase'de kayıtlı değilse canlı sistemde giriş yapılamaz
-      console.warn('Firebase veritabanında bu telefonla kayıtlı kullanıcı bulunamadı:', standartTelefon);
-      return null;
+
+      if (yetkisizRolVarMi) {
+        console.warn('Yetkisiz rol ile mutfak paneline giriş engellendi:', standartTelefon);
+        return { kullanici: null, hataMesaji: YETKISIZ_ROL_UYARISI };
+      }
+
+      console.warn('Firebase veritabanında bu telefonla kayıtlı mutfak hesabı bulunamadı:', standartTelefon);
+      return {
+        kullanici: null,
+        hataMesaji: 'Giriş başarısız! Telefon numarası veya şifre hatalı, lütfen kontrol edin.',
+      };
     } catch (hata) {
       console.warn('Firebase kullanıcı giriş okuma hatası:', hata);
     }
   }
 
-  // Yalnızca Firebase çevrimdışı ise yerel test deposundan kontrol et
-  return testKullaniciDogrula(standartTelefon, girilenSifre);
+  // Yalnızca Firebase çevrimdışı ise yerel test deposundan kontrol et (rol kilidiyle)
+  const yerelKullanici = testKullaniciDogrula(standartTelefon, girilenSifre) as Kullanici | null;
+  if (yerelKullanici && !mutfakRoluMu(yerelKullanici.rol)) {
+    return { kullanici: null, hataMesaji: YETKISIZ_ROL_UYARISI };
+  }
+  return { kullanici: yerelKullanici };
+}
+
+export async function veritabanindanKullaniciGirisYaptir(
+  telefon: string,
+  sifre: string
+): Promise<Kullanici | null> {
+  const sonuc = await veritabanindanKullaniciGirisYaptirDetayli(telefon, sifre);
+  return sonuc.kullanici;
 }

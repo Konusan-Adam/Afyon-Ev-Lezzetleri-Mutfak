@@ -75,6 +75,7 @@
         "kimlik": { "type": "string" },
         "ad_soyad": { "type": "string" },
         "telefon": { "type": "string" },
+        "telefon_numarasi": { "type": "string" },
         "rol": { "type": "string" },
         "isletme_adi": { "type": "string" },
         "guvenlik_sorusu": { "type": "string" },

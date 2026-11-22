@@ -10,6 +10,55 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const IZINLI_GORSEL_KLASORLERI = new Set([
+  'yemekler',
+  'afisler',
+  'logolar',
+  'belgeler',
+  'coklu_menuler',
+  'genel',
+]);
+
+const IZINLI_ARSIV_ALANLARI = new Set(
+  [
+    'yedek.pazarafyon.com.tr',
+    'pazarafyon.com.tr',
+    ...(process.env.ARSIV_IZINLI_ALANLAR || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  ]
+);
+
+function ozelIpAdresiMi(hostname: string): boolean {
+  const temiz = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (temiz === 'localhost' || temiz === '127.0.0.1' || temiz === '::1' || temiz === '0.0.0.0') {
+    return true;
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(temiz)) {
+    const parcalar = temiz.split('.').map(Number);
+    if (parcalar[0] === 10 || parcalar[0] === 127 || parcalar[0] === 0) return true;
+    if (parcalar[0] === 169 && parcalar[1] === 254) return true;
+    if (parcalar[0] === 172 && parcalar[1] >= 16 && parcalar[1] <= 31) return true;
+    if (parcalar[0] === 192 && parcalar[1] === 168) return true;
+  }
+  return false;
+}
+
+function guvenliArsivUrlDogrula(hedefUrl: unknown): URL | null {
+  if (typeof hedefUrl !== 'string' || !hedefUrl.trim()) return null;
+  try {
+    const url = new URL(hedefUrl.trim());
+    if (url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase();
+    if (ozelIpAdresiMi(host)) return null;
+    if (!IZINLI_ARSIV_ALANLARI.has(host)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -23,9 +72,18 @@ async function startServer() {
     try {
       const { resimBase64, dosyaAdi, klasor = 'yemekler' } = req.body;
 
-      if (!resimBase64) {
+      if (typeof resimBase64 !== 'string' || !resimBase64) {
         return res.status(400).json({ basarili: false, hata: 'Resim verisi bulunamadı.' });
       }
+
+      const guvenliKlasor =
+        typeof klasor === 'string' && IZINLI_GORSEL_KLASORLERI.has(klasor.trim())
+          ? klasor.trim()
+          : 'yemekler';
+      const temizDosyaAdi =
+        typeof dosyaAdi === 'string' && dosyaAdi.trim()
+          ? path.basename(dosyaAdi.trim()).replace(/[^a-zA-Z0-9._-]/g, '_')
+          : `resim_${Date.now()}.webp`;
 
       // cPanel sunucusuna iletmeyi dene (yedek.pazarafyon.com.tr)
       try {
@@ -35,8 +93,8 @@ async function startServer() {
 
         const formData = new FormData();
         const blob = new Blob([buffer], { type: mimeType });
-        formData.append('dosya', blob, dosyaAdi || `resim_${Date.now()}.webp`);
-        formData.append('klasor', klasor);
+        formData.append('dosya', blob, temizDosyaAdi);
+        formData.append('klasor', guvenliKlasor);
 
         const disSunucuYaniti = await fetch('https://yedek.pazarafyon.com.tr/yukle.php', {
           method: 'POST',
@@ -75,10 +133,13 @@ async function startServer() {
   // 2. Afyon Lezzet Danışmanı & Yapay Zeka Asistanı (/api/lezzet-danismani)
   app.post('/api/lezzet-danismani', async (req: Request, res: Response) => {
     try {
-      const { mesaj, gecmis = [], mevcutYemekler = [] } = req.body;
+      const { mesaj, mevcutYemekler = [] } = req.body;
 
-      if (!mesaj) {
+      if (typeof mesaj !== 'string' || !mesaj.trim()) {
         return res.status(400).json({ hata: 'Mesaj içeriği gereklidir.' });
+      }
+      if (mesaj.trim().length > 600) {
+        return res.status(400).json({ hata: 'Mesaj uzunluğu 600 karakteri geçemez.' });
       }
 
       const apiKey = process.env.GEMINI_API_KEY;
@@ -130,20 +191,26 @@ Lütfen Türkçe, sıcak ve esnaf samimiyetiyle en fazla 2-3 cümlelik yanıt ve
     }
   });
 
-  // 3. Arşivleme & Yedekleme Köprüsü (/api/arsivle)
+  // 3. Arşivleme & Yedekleme Köprüsü (/api/arsivle - Sıkı alan adı & HTTPS korumalı)
   app.post('/api/arsivle', async (req: Request, res: Response) => {
     try {
       const { hedefUrl, apiKey, veriPaketi } = req.body;
+      const guvenliUrl = guvenliArsivUrlDogrula(hedefUrl);
 
-      if (!hedefUrl) {
-        return res.status(400).json({ basarili: false, mesaj: 'Hedef sunucu URL adresi eksik.' });
+      if (!guvenliUrl) {
+        return res.status(403).json({
+          basarili: false,
+          mesaj: 'Yalnızca yetkili HTTPS yedekleme alan adlarına erişim izni vardır.',
+        });
       }
 
-      const disSunucuYaniti = await fetch(hedefUrl, {
+      const disSunucuYaniti = await fetch(guvenliUrl.toString(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          ...(typeof apiKey === 'string' && apiKey.trim()
+            ? { Authorization: `Bearer ${apiKey.trim()}` }
+            : {}),
         },
         body: JSON.stringify(veriPaketi),
       });

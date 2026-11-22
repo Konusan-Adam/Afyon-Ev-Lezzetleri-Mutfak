@@ -6,13 +6,11 @@ import './index.css';
 
 import { geriTusuKorumasiniBaslat } from './MalzemeCekmeceleri/GeriTusuKorumasi';
 import { arkaPlanCanliTutucuBaslat } from './MalzemeCekmeceleri/ArkaPlanCanliTutucu';
-import { firebaseBaslangicVerileriniYukle } from './veritabani/FirebaseBaslangicYukleyici';
 
-// Service Worker kaydı ve Firebase Canlı Tohumlama
+// Service Worker kaydı
 if (typeof window !== 'undefined') {
   geriTusuKorumasiniBaslat();
   arkaPlanCanliTutucuBaslat();
-  firebaseBaslangicVerileriniYukle().catch(() => {});
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

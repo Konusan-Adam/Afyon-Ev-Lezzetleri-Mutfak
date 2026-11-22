@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Kullanici, KullaniciRolu } from '@/src/veritabani/VeriTipleri';
 import {
+  MutfakGirisSonucu,
   veritabaninaKullaniciKaydet,
-  veritabanindanKullaniciGirisYaptir,
+  veritabanindanKullaniciGirisYaptirDetayli,
 } from '@/src/MalzemeCekmeceleri/kullaniciIslemleri';
+import {
+  mutfakRoluMu,
+  YETKISIZ_ROL_UYARISI,
+} from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 
 export type PanelTipi = 'vitrin' | 'patron' | 'musteri' | 'mutfak' | 'kurye';
 
@@ -20,6 +25,7 @@ interface KullaniciHafizaTipi {
   pencereAc: (baslangicSekmesi?: 'giris' | 'kayit' | any, baslangicRolu?: KullaniciRolu) => void;
   pencereKapat: () => void;
   girisYap: (telefon: string, sifre: string) => Promise<boolean>;
+  girisYapDetayli: (telefon: string, sifre: string) => Promise<{ basarili: boolean; hataMesaji?: string }>;
   kayitOl: (bilgiler: {
     ad_soyad: string;
     telefon: string;
@@ -52,7 +58,13 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
   const [aktifKullanici, setAktifKullanici] = useState<Kullanici | null>(() => {
     try {
       const kayitliOturum = localStorage.getItem('afyon_oturum_kullanici');
-      return kayitliOturum ? JSON.parse(kayitliOturum) : null;
+      if (!kayitliOturum) return null;
+      const parsed = JSON.parse(kayitliOturum);
+      if (!parsed || !mutfakRoluMu(parsed.rol)) {
+        localStorage.removeItem('afyon_oturum_kullanici');
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -60,13 +72,13 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [pencereAcik, setPencereAcik] = useState<boolean>(false);
   const [baslangicSekmesi, setBaslangicSekmesi] = useState<'giris' | 'kayit'>('giris');
-  const [baslangicRolu, setBaslangicRolu] = useState<KullaniciRolu>('musteri');
+  const [baslangicRolu, setBaslangicRolu] = useState<KullaniciRolu>('mutfak');
   const [yukleniyor, setYukleniyor] = useState<boolean>(false);
-  const [goruntulenenPanel, setGoruntulenenPanel] = useState<PanelTipi>('vitrin');
+  const [goruntulenenPanel, setGoruntulenenPanel] = useState<PanelTipi>('mutfak');
 
   // Oturum değiştikçe localStorage güncelle
   useEffect(() => {
-    if (aktifKullanici) {
+    if (aktifKullanici && mutfakRoluMu(aktifKullanici.rol)) {
       localStorage.setItem('afyon_oturum_kullanici', JSON.stringify(aktifKullanici));
     } else {
       localStorage.removeItem('afyon_oturum_kullanici');
@@ -82,44 +94,48 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const testRoluneGec = (rol: KullaniciRolu) => {
-    if (rol === 'musteri') {
-      setGoruntulenenPanel('musteri');
-    } else if (rol === 'ev_mutfagi' || rol === 'ticari_restoran') {
+    if (mutfakRoluMu(rol)) {
       setGoruntulenenPanel('mutfak');
-    } else if (rol === 'kurye') {
-      setGoruntulenenPanel('kurye');
-    } else if (rol === 'yonetici') {
-      setGoruntulenenPanel('patron');
     }
   };
 
   const roleGorePaneleYonlendir = (kullanici: Kullanici) => {
-    if (kullanici.rol === 'yonetici') {
-      setGoruntulenenPanel('patron');
-    } else if (kullanici.rol === 'ev_mutfagi' || kullanici.rol === 'ticari_restoran') {
+    if (mutfakRoluMu(kullanici.rol)) {
       setGoruntulenenPanel('mutfak');
-    } else if (kullanici.rol === 'kurye') {
-      setGoruntulenenPanel('kurye');
     } else {
       setGoruntulenenPanel('vitrin');
     }
   };
 
-  const girisYap = async (telefon: string, sifre: string): Promise<boolean> => {
+  const girisYapDetayli = async (
+    telefon: string,
+    sifre: string
+  ): Promise<{ basarili: boolean; hataMesaji?: string }> => {
     setYukleniyor(true);
-    const kullanici = await veritabanindanKullaniciGirisYaptir(telefon, sifre);
+    const sonuc: MutfakGirisSonucu = await veritabanindanKullaniciGirisYaptirDetayli(telefon, sifre);
     setYukleniyor(false);
 
-    if (kullanici) {
-      setAktifKullanici(kullanici);
-      setPencereAcik(false);
-      roleGorePaneleYonlendir(kullanici);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('afyon_oturum_degisti', { detail: { aktifKullanici: kullanici } }));
+    if (sonuc.kullanici) {
+      if (!mutfakRoluMu(sonuc.kullanici.rol)) {
+        return { basarili: false, hataMesaji: YETKISIZ_ROL_UYARISI };
       }
-      return true;
+      setAktifKullanici(sonuc.kullanici);
+      setPencereAcik(false);
+      roleGorePaneleYonlendir(sonuc.kullanici);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('afyon_oturum_degisti', { detail: { aktifKullanici: sonuc.kullanici } }));
+      }
+      return { basarili: true };
     }
-    return false;
+    return {
+      basarili: false,
+      hataMesaji: sonuc.hataMesaji,
+    };
+  };
+
+  const girisYap = async (telefon: string, sifre: string): Promise<boolean> => {
+    const sonuc = await girisYapDetayli(telefon, sifre);
+    return sonuc.basarili;
   };
 
   const kayitOl = async (bilgiler: {
@@ -194,6 +210,7 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
         },
         pencereKapat: () => setPencereAcik(false),
         girisYap,
+        girisYapDetayli,
         kayitOl,
         cikisYap,
         aktifKullaniciBilgisiGuncelle,

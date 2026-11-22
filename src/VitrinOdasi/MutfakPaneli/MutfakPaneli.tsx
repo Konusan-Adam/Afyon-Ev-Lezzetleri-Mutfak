@@ -61,9 +61,7 @@ import {
   siparisStokIadeUygula,
 } from '@/src/MalzemeCekmeceleri/Mutfak/gunlukStokIslemleri';
 import { MutfakDurumUyariKarti } from './MutfakDurumUyariKarti';
-
-const VARSAYILAN_TEST_MUTFAKLARI = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1', 'm2', 'mutfak-muzaffer'];
-const M1_ESLESEN_KIMLIKLER = ['m1', 'asci_fatma_01', 'mutfak-fatma-teyze', 'mutfak-1'];
+import { mutfakRoluMu } from '@/src/MalzemeCekmeceleri/Mutfak/mutfakKullaniciSorgusu';
 
 function telefonRakamTemizle(tel?: string): string {
   if (!tel) return '';
@@ -74,9 +72,8 @@ function telefonRakamTemizle(tel?: string): string {
 }
 
 function kayitBuMutfagaAitMi(kayitMutfakId: string | undefined, mutfakId: string): boolean {
-  if (!kayitMutfakId) return M1_ESLESEN_KIMLIKLER.includes(mutfakId);
-  if (kayitMutfakId === mutfakId) return true;
-  return M1_ESLESEN_KIMLIKLER.includes(mutfakId) && M1_ESLESEN_KIMLIKLER.includes(kayitMutfakId);
+  if (!kayitMutfakId || !mutfakId) return false;
+  return kayitMutfakId === mutfakId;
 }
 
 function mutfakDokumaniKullaniciyaAitMi(
@@ -99,7 +96,6 @@ export const MutfakPaneli: React.FC = () => {
   const [mutfakAcik, setMutfakAcik] = useState(true);
   const [mutfakKaydi, setMutfakKaydi] = useState<any>(null);
   const [tumMutfaklar, setTumMutfaklar] = useState<any[]>([]);
-  const [seciliYoneticiMutfakId, setSeciliYoneticiMutfakId] = useState<string>('');
 
   const [aktifSekme, setAktifSekme] = useState<MutfakAnaSekme>('siparisler');
   const [kazancAltSekme, setKazancAltSekme] = useState<'cuzdan' | 'tamamlanan'>('cuzdan');
@@ -126,21 +122,15 @@ export const MutfakPaneli: React.FC = () => {
 
   const { siparisler: canliSiparisler, yenile: siparisleriYenile } = useMusteriSiparisleri();
 
-  const yoneticiMi = aktifKullanici?.rol === 'yonetici';
-  const kullaniciHamMutfakId = aktifKullanici?.kimlik || aktifKullanici?.id || 'm1';
-  const mutfakId = yoneticiMi
-    ? (seciliYoneticiMutfakId || mutfakKaydi?.id || mutfakKaydi?.kimlik || 'm1')
-    : (mutfakKaydi?.id || mutfakKaydi?.kimlik || kullaniciHamMutfakId);
+  const kullaniciHamMutfakId = aktifKullanici?.kimlik || aktifKullanici?.id || '';
+  const mutfakId = mutfakKaydi?.id || mutfakKaydi?.kimlik || kullaniciHamMutfakId;
 
   const mutfakAdi =
     mutfakKaydi?.mutfak_adi ||
     mutfakKaydi?.ad ||
-    (yoneticiMi ? 'Afyon Ev Mutfağı' : aktifKullanici?.isletme_adi || aktifKullanici?.ad_soyad || 'Afyon Ev Mutfağı');
+    (aktifKullanici?.isletme_adi || aktifKullanici?.ad_soyad || 'Afyon Ev Mutfağı');
 
-  const oturumYetkiliMi = Boolean(
-    aktifKullanici &&
-    (aktifKullanici.rol === 'ev_mutfagi' || aktifKullanici.rol === 'ticari_restoran' || aktifKullanici.rol === 'yonetici')
-  );
+  const oturumYetkiliMi = Boolean(aktifKullanici && mutfakRoluMu(aktifKullanici.rol));
 
   // Mutfak kaydını canlı dinle (puan, mahalle, açık/kapalı durumu, onay durumu, teslimat ayarları)
   useEffect(() => {
@@ -152,22 +142,9 @@ export const MutfakPaneli: React.FC = () => {
       );
       setTumMutfaklar(gecerliMutfaklar);
 
-      let bulunan: any = null;
-      if (yoneticiMi) {
-        const hedef = seciliYoneticiMutfakId || 'm1';
-        bulunan =
-          gecerliMutfaklar.find((m) => (m.id || m.kimlik) === hedef) ||
-          gecerliMutfaklar.find((m) => kayitBuMutfagaAitMi(m.id || m.kimlik, 'm1')) ||
-          gecerliMutfaklar[0] ||
-          null;
-        if (bulunan && !seciliYoneticiMutfakId) {
-          setSeciliYoneticiMutfakId(bulunan.id || bulunan.kimlik);
-        }
-      } else {
-        bulunan = gecerliMutfaklar.find((m) =>
-          mutfakDokumaniKullaniciyaAitMi(m, kullaniciHamMutfakId, aktifKullanici?.telefon)
-        );
-      }
+      const bulunan = gecerliMutfaklar.find((m) =>
+        mutfakDokumaniKullaniciyaAitMi(m, kullaniciHamMutfakId, aktifKullanici?.telefon)
+      );
 
       if (bulunan) {
         setMutfakKaydi(bulunan);
@@ -178,13 +155,13 @@ export const MutfakPaneli: React.FC = () => {
     });
 
     return () => abonelikDurdur();
-  }, [oturumYetkiliMi, yoneticiMi, seciliYoneticiMutfakId, kullaniciHamMutfakId, aktifKullanici?.telefon]);
+  }, [oturumYetkiliMi, kullaniciHamMutfakId, aktifKullanici?.telefon]);
 
   // 🔔 Canlı Sipariş Zil & İptal Alarmı Dedektörü
   const { yeniSiparisUyarisi, iptalSiparisUyarisi, uyariKapat, iptalUyarisiKapat } = useMutfakBildirimleri(mutfakId, {
     aktifMi: oturumYetkiliMi,
     ekMutfakKimlikleri: [mutfakKaydi?.id, mutfakKaydi?.kimlik].filter(Boolean) as string[],
-    tumMutfaklariDinle: aktifKullanici?.rol === 'yonetici',
+    tumMutfaklariDinle: false,
   });
 
   // 🍱 Çoklu Menüler (coklu_menuler koleksiyonu)
@@ -208,7 +185,7 @@ export const MutfakPaneli: React.FC = () => {
       mutfakAdi,
       acikMi: mutfakAcik,
       ekKimlikler,
-      tumMutfaklar: aktifKullanici?.rol === 'yonetici',
+      tumMutfaklar: false,
     });
     androidZilTercihiniSenkronizeEt();
   }, [oturumYetkiliMi, mutfakId, mutfakAdi, mutfakAcik, mutfakKaydi?.id, mutfakKaydi?.kimlik, aktifKullanici?.rol]);
@@ -238,21 +215,13 @@ export const MutfakPaneli: React.FC = () => {
     return () => abonelikDurdur();
   }, [mutfakId, oturumYetkiliMi]);
 
-  const yoneticiDegilVeTestDegil =
-    aktifKullanici?.rol !== 'yonetici' &&
-    !VARSAYILAN_TEST_MUTFAKLARI.includes(aktifKullanici?.kimlik || '');
-
-  const askidaMi =
-    yoneticiDegilVeTestDegil &&
-    Boolean(mutfakKaydi?.askida_mi || (aktifKullanici as any)?.askida_mi);
+  const askidaMi = Boolean(mutfakKaydi?.askida_mi || (aktifKullanici as any)?.askida_mi);
 
   const reddedildiMi =
-    yoneticiDegilVeTestDegil &&
-    (mutfakKaydi?.onay_durumu === 'reddedildi' ||
-      (!mutfakKaydi && (aktifKullanici as any)?.onay_durumu === 'reddedildi'));
+    mutfakKaydi?.onay_durumu === 'reddedildi' ||
+    (!mutfakKaydi && (aktifKullanici as any)?.onay_durumu === 'reddedildi');
 
   const onayBekliyorMu =
-    yoneticiDegilVeTestDegil &&
     !askidaMi &&
     !reddedildiMi &&
     (
@@ -455,7 +424,7 @@ export const MutfakPaneli: React.FC = () => {
     setSilinecekCokluMenuId(null);
   };
 
-  if (!aktifKullanici || (aktifKullanici.rol !== 'ev_mutfagi' && aktifKullanici.rol !== 'ticari_restoran' && aktifKullanici.rol !== 'yonetici')) {
+  if (!aktifKullanici || !mutfakRoluMu(aktifKullanici.rol)) {
     return <MutfakGirisEkrani />;
   }
 
@@ -484,39 +453,6 @@ export const MutfakPaneli: React.FC = () => {
           setKazancAltSekme('tamamlanan');
         }}
       />
-
-      {/* 👑 PATRON ÖNİZLEME BANNERI (Yalnızca Yönetici Hesabında Görünür) */}
-      {aktifKullanici?.rol === 'yonetici' && (
-        <div className="bg-gradient-to-r from-amber-600 via-purple-900 to-amber-700 text-white px-4 py-2 text-xs flex items-center justify-between flex-wrap gap-2 shadow-lg">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-amber-300" />
-            <span className="font-bold">EV MUTFAĞI & AŞÇI PANELİ (Yönetici Görünümü)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {tumMutfaklar.length > 0 && (
-              <select
-                value={mutfakId}
-                onChange={(e) => setSeciliYoneticiMutfakId(e.target.value)}
-                className="bg-[#180A1F] border border-amber-400/50 text-amber-200 text-[11px] font-bold rounded-lg px-2.5 py-1 outline-none cursor-pointer"
-                title="Yönetilecek aktif mutfağı seçin"
-              >
-                {tumMutfaklar.map((m) => {
-                  const id = m.id || m.kimlik;
-                  const ad = m.mutfak_adi || m.ad || id;
-                  return (
-                    <option key={id} value={id}>
-                      {ad} ({id})
-                    </option>
-                  );
-                })}
-              </select>
-            )}
-            <span className="text-[11px] text-amber-200 font-semibold hidden md:inline">
-              Tam yetkili mutfak denetim modu
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* 📲 APK OTOMATİK GÜNCELLEME UYARISI (Yalnızca Android Uygulamasında Görünür) */}
       <ApkGuncellemeUyarisi />
