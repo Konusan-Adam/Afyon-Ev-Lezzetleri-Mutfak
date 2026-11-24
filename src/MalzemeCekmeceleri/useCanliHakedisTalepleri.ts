@@ -7,6 +7,7 @@ import {
   belgeSil
 } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { patronBildirimiEkle } from './PatronBildirimServisi';
+import { hukukiDelilDamgalaVeKaydet } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukiDelilServisi';
 
 export const BASLANGIC_HAKEDIS_TALEPLERI: HakedisCekimTalebi[] = [];
 
@@ -70,6 +71,23 @@ export function useCanliHakedisTalepleri() {
     setTalepler(onceki => [yeni, ...onceki]);
     try {
       await belgeKaydet('hakedis_talepleri', yeni.id, yeni);
+      await hukukiDelilDamgalaVeKaydet({
+        islemTuru: 'hakedis',
+        sozlesmeTuru: 'mutfak_hakedis_talebi',
+        sozlesmeVersiyonu: '1.0.0',
+        sozlesmeIcerigi: yeni.aciklama || `${yeni.mutfak_adi || 'Mutfak'} ${yeni.tutar} TL hakediş çekim talebi`,
+        ilgiliKayitId: yeni.id,
+        onaylandiMi: true,
+        ekDetay: {
+          talepId: yeni.id,
+          rolTipi: yeni.rol_tipi || 'mutfak',
+          mutfakId: yeni.mutfak_id || '',
+          mutfakAdi: yeni.mutfak_adi || '',
+          tutar: Number(yeni.tutar) || 0,
+          bankaAdi: yeni.banka_adi || '',
+          ibanSon4: String(yeni.iban || '').replace(/\s+/g, '').slice(-4),
+        },
+      });
       patronBildirimiEkle(
         'hakedis_talebi',
         'Yeni Hakediş Çekim Talebi 💰',

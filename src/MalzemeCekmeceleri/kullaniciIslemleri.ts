@@ -14,9 +14,9 @@ import {
 import { telefonGecerliMi } from './Dogrulama/telefonDogrulayici';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
 import {
-  hukukiLogKaydet,
   hukukiSozlesmeleriGetir,
 } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
+import { hukukiDelilDamgalaVeKaydet } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukiDelilServisi';
 import {
   GUVENLIK_SORULARI,
   GUVENLIK_SORUSU_ONEM_ACIKLAMASI,
@@ -120,35 +120,79 @@ export async function veritabaninaKullaniciKaydet(
   // Yerel test deposuna her zaman kaydet
   testKullaniciEkle(kullaniciKaydi as unknown as TestKullaniciKaydi);
 
-  // Yasal Sözleşme Onay Loglarını Kaydet
-  if (yeniKullanici.sozlesme_onayli || yeniKullanici.kvkk_onayli) {
-    try {
-      const sozlesmeler = hukukiSozlesmeleriGetir();
-      if (yeniKullanici.sozlesme_onayli) {
-        hukukiLogKaydet({
+  // Yasal Sözleşme Onaylarını ve Hijyen/Muafiyet Beyanını Zaman Damgasıyla Mühürle
+  try {
+    const sozlesmeler = hukukiSozlesmeleriGetir();
+    const damgaGorevleri: Promise<unknown>[] = [];
+
+    if (yeniKullanici.sozlesme_onayli) {
+      damgaGorevleri.push(
+        hukukiDelilDamgalaVeKaydet({
           sozlesmeTuru: 'mutfak_kayit_sozlesmesi',
           sozlesmeVersiyonu: sozlesmeler.mutfak_kayit_sozlesmesi?.versiyon || '1.0.0',
+          sozlesmeIcerigi: sozlesmeler.mutfak_kayit_sozlesmesi?.icerik,
+          ilgiliKayitId: kimlikId,
           kullaniciKimlik: kimlikId,
           kullaniciTelefon: duzgunTelefon,
           kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
           islemTuru: 'kayit',
           onaylandiMi: true,
-        });
-      }
-      if (yeniKullanici.kvkk_onayli) {
-        hukukiLogKaydet({
+          ekDetay: {
+            isletmeAdi: kullaniciKaydi.isletme_adi,
+            calismaModeli: kullaniciKaydi.calisma_modeli,
+            hijyenBelgesiDurumu: kullaniciKaydi.hijyen_belgesi_durumu,
+            esnafMuafiyetDurumu: kullaniciKaydi.esnaf_muafiyet_durumu,
+          },
+        })
+      );
+    }
+
+    if (yeniKullanici.kvkk_onayli) {
+      damgaGorevleri.push(
+        hukukiDelilDamgalaVeKaydet({
           sozlesmeTuru: 'kvkk_aydinlatma',
           sozlesmeVersiyonu: sozlesmeler.kvkk_aydinlatma?.versiyon || '1.0.0',
+          sozlesmeIcerigi: sozlesmeler.kvkk_aydinlatma?.icerik,
+          ilgiliKayitId: kimlikId,
           kullaniciKimlik: kimlikId,
           kullaniciTelefon: duzgunTelefon,
           kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
           islemTuru: 'kayit',
           onaylandiMi: true,
-        });
-      }
-    } catch (hata) {
-      console.warn('Hukuki onay logu kaydedilemedi:', hata);
+          ekDetay: {
+            isletmeAdi: kullaniciKaydi.isletme_adi,
+          },
+        })
+      );
     }
+
+    if (yeniKullanici.hijyen_belgesi_durumu || yeniKullanici.esnaf_muafiyet_durumu) {
+      const beyanMetni = `Mutfak Basvuru Beyani | Isletme: ${kullaniciKaydi.isletme_adi} | Calisma Modeli: ${kullaniciKaydi.calisma_modeli} | Hijyen Belgesi: ${kullaniciKaydi.hijyen_belgesi_durumu} | Esnaf Muafiyeti: ${kullaniciKaydi.esnaf_muafiyet_durumu}`;
+      damgaGorevleri.push(
+        hukukiDelilDamgalaVeKaydet({
+          sozlesmeTuru: 'hijyen_esnaf_muafiyet_onayi',
+          sozlesmeVersiyonu: '1.0.0',
+          sozlesmeIcerigi: beyanMetni,
+          ilgiliKayitId: kimlikId,
+          kullaniciKimlik: kimlikId,
+          kullaniciTelefon: duzgunTelefon,
+          kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
+          islemTuru: 'kayit',
+          onaylandiMi: true,
+          ekDetay: {
+            calismaModeli: kullaniciKaydi.calisma_modeli,
+            hijyenBelgesiDurumu: kullaniciKaydi.hijyen_belgesi_durumu,
+            esnafMuafiyetDurumu: kullaniciKaydi.esnaf_muafiyet_durumu,
+          },
+        })
+      );
+    }
+
+    if (damgaGorevleri.length > 0) {
+      await Promise.allSettled(damgaGorevleri);
+    }
+  } catch (hata) {
+    console.warn('Hukuki onay zaman damgası kaydedilemedi:', hata);
   }
 
   // Patron Canlı Bildirimi Tetikle

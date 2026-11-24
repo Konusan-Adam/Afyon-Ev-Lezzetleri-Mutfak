@@ -33,7 +33,7 @@ export const SiparisIptalPenceresi: React.FC<SiparisIptalPenceresiProps> = ({
     try {
       setYukleniyor(true);
       setHata(null);
-      await siparisIptalEt(siparisKimligi, secilenGerekce, detayNot);
+      await siparisIptalEt(siparisKimligi, secilenGerekce, detayNot, siparisNo);
       onBasarili();
       onKapat();
     } catch (e: any) {

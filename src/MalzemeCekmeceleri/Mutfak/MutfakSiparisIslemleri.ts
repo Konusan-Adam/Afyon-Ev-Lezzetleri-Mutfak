@@ -2,6 +2,7 @@ import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
 import { belgeKaydet, koleksiyonGetir, belgeSil, belgeGetir } from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import { yerelSiparisDurumGuncelle } from '@/src/MalzemeCekmeceleri/useMusteriSiparisleri';
 import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServisi';
+import { hukukiDelilDamgalaVeKaydet } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukiDelilServisi';
 
 export async function mutfakSiparisDurumuGuncelle(
   siparisId: string,
@@ -126,6 +127,33 @@ export async function mutfakSiparisDurumuGuncelle(
     } catch (hata) {
       console.warn('Firebase mutfak durum güncelleme hatası:', hata);
     }
+  }
+
+  // 5. Hukuki Delil & Zaman Damgası (Sipariş Kabul / Hazırlama / Paketleme Onayı)
+  if (yeniDurum === 'hazirlaniyor' || yeniDurum === 'paketlendi' || yeniDurum === 'yolda' || yeniDurum === 'teslim_edildi') {
+    const sozlesmeTuru =
+      yeniDurum === 'hazirlaniyor'
+        ? 'mutfak_siparis_kabul_onayi'
+        : yeniDurum === 'paketlendi'
+        ? 'mutfak_paketleme_onayi'
+        : 'mutfak_siparis_durum_onayi';
+    hukukiDelilDamgalaVeKaydet({
+      islemTuru: 'ozel_onay',
+      sozlesmeTuru,
+      sozlesmeVersiyonu: '1.0.0',
+      sozlesmeIcerigi: aciklama,
+      ilgiliKayitId: siparisKodu || siparisId,
+      onaylandiMi: true,
+      ekDetay: {
+        siparisId,
+        siparisKodu: siparisKodu || siparisId,
+        yeniDurum,
+        yeniAsama,
+        hazirlanmaSuresiDakika: dakika,
+      },
+    }).catch((err) => {
+      console.warn('Sipariş onay zaman damgası hatası:', err);
+    });
   }
 }
 

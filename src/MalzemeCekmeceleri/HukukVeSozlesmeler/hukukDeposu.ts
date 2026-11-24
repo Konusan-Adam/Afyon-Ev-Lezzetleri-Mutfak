@@ -1,6 +1,10 @@
 import { HukukiSozlesme, HukukiOnayLogu, CerezTercihleri, SozlesmeTuru } from './tipler';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
 import { koleksiyonGetir, belgeKaydet, belgeSil } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import {
+  hukukiDelilDamgalaVeKaydet,
+  yeniDelilKimligiUret,
+} from './hukukiDelilServisi';
 
 const YEREL_SOZLESMELER_ANAHTARI = 'afyon_hukuki_sozlesmeler_v3';
 const YEREL_LOGLAR_ANAHTARI = 'afyon_hukuki_onay_loglari_v2';
@@ -284,29 +288,42 @@ export const hukukiLoglariCanliGetir = async (): Promise<HukukiOnayLogu[]> => {
   return hukukiLoglariGetir();
 };
 
-export const hukukiLogKaydet = (logVerisi: Omit<HukukiOnayLogu, 'kimlik' | 'tarihSaat' | 'ipAdresi' | 'cihazBilgisi'>): HukukiOnayLogu => {
-  const yeniLog: HukukiOnayLogu = {
-    kimlik: 'log_' + Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6),
+export const hukukiLogKaydet = (
+  logVerisi: Omit<HukukiOnayLogu, 'kimlik' | 'tarihSaat' | 'ipAdresi' | 'cihazBilgisi'> & {
+    sozlesmeIcerigi?: string;
+  }
+): HukukiOnayLogu => {
+  const kimlik = yeniDelilKimligiUret();
+  const cihazBilgisi =
+    typeof navigator !== 'undefined' && navigator.userAgent
+      ? navigator.userAgent.substring(0, 120)
+      : 'Bilinmeyen İstemci';
+
+  const onizlemeLog: HukukiOnayLogu = {
+    kimlik,
     tarihSaat: new Date().toLocaleString('tr-TR'),
-    ipAdresi: '195.175.' + Math.floor(Math.random() * 200 + 10) + '.' + Math.floor(Math.random() * 200 + 10) + ' (Afyon/Merkez)',
-    cihazBilgisi: navigator.userAgent.substring(0, 70),
-    ...logVerisi
+    ipAdresi: 'bekleniyor',
+    cihazBilgisi,
+    ...logVerisi,
   };
 
-  try {
-    const mevcut = hukukiLoglariGetir();
-    mevcut.unshift(yeniLog); // En yeni log en başta
-    if (mevcut.length > 500) mevcut.pop();
-    localStorage.setItem(YEREL_LOGLAR_ANAHTARI, JSON.stringify(mevcut));
+  hukukiDelilDamgalaVeKaydet({
+    kimlik,
+    sozlesmeTuru: logVerisi.sozlesmeTuru,
+    sozlesmeVersiyonu: logVerisi.sozlesmeVersiyonu,
+    islemTuru: logVerisi.islemTuru,
+    onaylandiMi: logVerisi.onaylandiMi,
+    sozlesmeIcerigi: logVerisi.sozlesmeIcerigi,
+    ilgiliKayitId: logVerisi.ilgiliKayitId,
+    kullaniciKimlik: logVerisi.kullaniciKimlik,
+    kullaniciTelefon: logVerisi.kullaniciTelefon,
+    kullaniciAdSoyad: logVerisi.kullaniciAdSoyad,
+    ekDetay: logVerisi.ekDetay,
+  }).catch((e) => {
+    console.warn('Hukuki zaman damgası kaydı tamamlanamadı:', e);
+  });
 
-    if (canliFirebaseAktifMi()) {
-      belgeKaydet('hukuki_onay_loglari', yeniLog.kimlik, yeniLog).catch(() => {});
-    }
-  } catch (e) {
-    console.error('Hukuki log yazılamadı:', e);
-  }
-
-  return yeniLog;
+  return onizlemeLog;
 };
 
 export const cerezTercihleriniGetir = (): CerezTercihleri | null => {

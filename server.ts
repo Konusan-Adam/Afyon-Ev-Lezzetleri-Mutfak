@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { zamanDamgasiUret } from './src/SunucuIsleri/ZamanDamgasiServisi';
 
 dotenv.config();
 
@@ -61,6 +62,7 @@ function guvenliArsivUrlDogrula(hedefUrl: unknown): URL | null {
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', true);
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // JSON ve URL form gövdesi limitleri
@@ -229,6 +231,49 @@ Lütfen Türkçe, sıcak ve esnaf samimiyetiyle en fazla 2-3 cümlelik yanıt ve
         basarili: false,
         mesaj: `Yedekleme köprüsü hatası: ${hata?.message || 'Sunucuya ulaşılamadı'}`,
       });
+    }
+  });
+
+  // 4. Hukuki Zaman Damgası Üretici (/api/zaman-damgasi/damgala)
+  app.post('/api/zaman-damgasi/damgala', async (req: Request, res: Response) => {
+    try {
+      const {
+        sozlesmeTuru,
+        sozlesmeVersiyonu,
+        islemTuru,
+        ilgiliKayitId,
+        kullaniciKimlik,
+        kullaniciTelefon,
+        kullaniciAdSoyad,
+        sozlesmeIcerigi,
+        sozlesmeMetinHash,
+        ekDetay,
+      } = req.body || {};
+
+      if (typeof sozlesmeTuru !== 'string' || !sozlesmeTuru.trim()) {
+        return res.status(400).json({ basarili: false, hata: 'sozlesmeTuru zorunludur.' });
+      }
+      if (typeof islemTuru !== 'string' || !islemTuru.trim()) {
+        return res.status(400).json({ basarili: false, hata: 'islemTuru zorunludur.' });
+      }
+
+      const damga = await zamanDamgasiUret(req, {
+        sozlesmeTuru,
+        sozlesmeVersiyonu: typeof sozlesmeVersiyonu === 'string' && sozlesmeVersiyonu.trim() ? sozlesmeVersiyonu : '1.0.0',
+        islemTuru,
+        ilgiliKayitId: typeof ilgiliKayitId === 'string' ? ilgiliKayitId : undefined,
+        kullaniciKimlik: typeof kullaniciKimlik === 'string' ? kullaniciKimlik : undefined,
+        kullaniciTelefon: typeof kullaniciTelefon === 'string' ? kullaniciTelefon : undefined,
+        kullaniciAdSoyad: typeof kullaniciAdSoyad === 'string' ? kullaniciAdSoyad : undefined,
+        sozlesmeIcerigi: typeof sozlesmeIcerigi === 'string' ? sozlesmeIcerigi : undefined,
+        sozlesmeMetinHash: typeof sozlesmeMetinHash === 'string' ? sozlesmeMetinHash : undefined,
+        ekDetay: ekDetay && typeof ekDetay === 'object' && !Array.isArray(ekDetay) ? ekDetay : undefined,
+      });
+
+      return res.json({ basarili: true, damga });
+    } catch (hata: any) {
+      console.error('Zaman damgası üretme hatası:', hata);
+      return res.status(500).json({ basarili: false, hata: 'Zaman damgası üretilemedi.' });
     }
   });
 

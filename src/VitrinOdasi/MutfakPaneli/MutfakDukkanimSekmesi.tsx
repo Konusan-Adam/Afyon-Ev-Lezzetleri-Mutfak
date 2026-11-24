@@ -10,17 +10,19 @@ import {
   Star,
   Music,
   Mic,
+  FileCheck2,
 } from 'lucide-react';
 import { sesliGeriBildirimTestEt } from '@/src/MalzemeCekmeceleri/Mutfak/MutfakSesliAsistanServisi';
 import { MutfakTeslimatAyarKarti } from './MutfakTeslimatAyarKarti';
 import { MutfakAfisSekmesi } from './MutfakAfisSekmesi';
 import { MutfakBelgelerSekmesi } from './MutfakBelgelerSekmesi';
 import { MutfakYorumlarSekmesi } from './MutfakYorumlarSekmesi';
+import { MutfakOnaylananSozlesmelerSekmesi } from './MutfakOnaylananSozlesmelerSekmesi';
 import { MutfakZilSeciciPenceresi } from './MutfakZilSeciciPenceresi';
 import { MutfakZilButonu } from '../Bilesenler/Mutfak/MutfakZilButonu';
 import { SesliAsistanButonu } from '../Bilesenler/Mutfak/SesliAsistanButonu';
 
-export type DukkanBolumu = 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
+export type DukkanBolumu = 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler' | 'sozlesmeler';
 
 interface MutfakDukkanimSekmesiProps {
   mutfakId: string;
@@ -220,6 +222,41 @@ export const MutfakDukkanimSekmesi: React.FC<MutfakDukkanimSekmesiProps> = ({
         {acikBolum === 'yorumlar' && (
           <div className="px-4 pb-4 pt-3 border-t border-purple-900/40">
             <MutfakYorumlarSekmesi mutfakId={mutfakId} mutfakAdi={mutfakAdi} />
+          </div>
+        )}
+      </div>
+
+      {/* 5. Onaylanan Sözleşmelerim & Zaman Damgaları */}
+      <div className="rounded-2xl bg-[#180A1F] border border-purple-900/60 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => bolumDegistir('sozlesmeler')}
+          className="w-full px-4 py-4 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-purple-950/30 transition-colors"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+              <FileCheck2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-white">Onaylanan Sözleşmelerim</h3>
+              <p className="text-[11px] text-gray-400 truncate">
+                Zaman damgalı kayıt sözleşmesi, KVKK ve .tsr kanıt dosyalarını indirin
+              </p>
+            </div>
+          </div>
+          {acikBolum === 'sozlesmeler' ? (
+            <ChevronUp className="w-5 h-5 text-purple-300 shrink-0" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-purple-300 shrink-0" />
+          )}
+        </button>
+        {acikBolum === 'sozlesmeler' && (
+          <div className="px-4 pb-4 pt-3 border-t border-purple-900/40">
+            <MutfakOnaylananSozlesmelerSekmesi
+              mutfakId={mutfakId}
+              mutfakAdi={mutfakAdi}
+              mutfakKaydi={mutfakKaydi}
+            />
           </div>
         )}
       </div>

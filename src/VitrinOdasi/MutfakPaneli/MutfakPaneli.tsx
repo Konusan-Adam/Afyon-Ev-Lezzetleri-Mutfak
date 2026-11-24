@@ -35,7 +35,7 @@ import { YemekDuzenlemePenceresi } from './YemekDuzenlemePenceresi';
 import { CokluMenuKolajOnizleme } from './CokluMenuKolajOnizleme';
 import { CokluMenuOlusturPenceresi } from './CokluMenuOlusturPenceresi';
 import { MutfakCuzdanSekmesi } from './MutfakCuzdanSekmesi';
-import { MutfakDukkanimSekmesi } from './MutfakDukkanimSekmesi';
+import { MutfakDukkanimSekmesi, DukkanBolumu } from './MutfakDukkanimSekmesi';
 import { MutfakAltNavigasyon, MutfakAnaSekme } from './MutfakAltNavigasyon';
 import { SiparisIptalPenceresi } from '../Bilesenler/MutfakYonetimi/SiparisIptalPenceresi';
 import { MutfakZilButonu } from '../Bilesenler/Mutfak/MutfakZilButonu';
@@ -114,7 +114,7 @@ export const MutfakPaneli: React.FC = () => {
   const [stokPlanlayiciAcik, setStokPlanlayiciAcik] = useState(false);
   const [molaModalAcik, setMolaModalAcik] = useState(false);
   const [dukkanAcikBolumIstegi, setDukkanAcikBolumIstegi] = useState<{
-    bolum: 'ayarlar' | 'yorumlar' | 'afis' | 'belgeler';
+    bolum: DukkanBolumu;
     tetik: number;
   } | null>(null);
   const islenenStokSiparisleriRef = useRef<Set<string>>(new Set());
