@@ -1,5 +1,6 @@
 import React from 'react';
 import { ShoppingBag, UtensilsCrossed, Wallet, Store, Coffee } from 'lucide-react';
+import { useKaydirmaMenusu } from '@/src/MalzemeCekmeceleri/Mutfak/useKaydirmaMenusu';
 
 export type MutfakAnaSekme = 'siparisler' | 'menum' | 'kazanc' | 'dukkanim';
 
@@ -20,6 +21,8 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
   onMolaAc,
   molaAktifMi = false,
 }) => {
+  const gorunurMu = useKaydirmaMenusu(60, 8, aktifSekme);
+
   const ogeler: Array<{
     id: MutfakAnaSekme;
     etiket: string;
@@ -55,7 +58,11 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
   return (
     <nav
       aria-label="Mutfak Mobil Menü"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#14051A]/95 backdrop-blur-md border-t border-purple-900/70 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]"
+      className={`md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#14051A]/95 backdrop-blur-md border-t border-purple-900/70 shadow-[0_-8px_30px_rgba(0,0,0,0.65)] transition-all duration-300 ease-in-out ${
+        gorunurMu
+          ? 'translate-y-0 opacity-100 pointer-events-auto'
+          : 'translate-y-full opacity-0 pointer-events-none'
+      }`}
     >
       <div className="grid grid-cols-5 gap-1 px-1.5 py-1.5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
         {ogeler.map((oge) => {
@@ -85,7 +92,11 @@ export const MutfakAltNavigasyon: React.FC<MutfakAltNavigasyonProps> = ({
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] leading-tight truncate max-w-full ${secili ? 'font-extrabold' : 'font-semibold'}`}>
+              <span
+                className={`text-[10px] leading-tight truncate max-w-full ${
+                  secili ? 'font-extrabold' : 'font-semibold'
+                }`}
+              >
                 {oge.etiket}
               </span>
             </button>
