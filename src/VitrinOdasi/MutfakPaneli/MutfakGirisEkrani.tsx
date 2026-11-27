@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Phone,
   Lock,
@@ -18,8 +18,10 @@ import {
   GUVENLIK_SORUSU_ONEM_ACIKLAMASI,
 } from '@/src/MalzemeCekmeceleri/GuvenlikSorusuServisi';
 import {
+  hukukiSozlesmeleriCanliDinle,
   hukukiSozlesmeleriCanliSenkronizeEt,
   hukukiSozlesmeleriGetir,
+  mutfakKayitSozlesmeleriniFiltrele,
 } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
 import { HukukiSozlesme } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/tipler';
 import { ApkGuncellemeUyarisi } from './ApkGuncellemeUyarisi';
@@ -50,16 +52,31 @@ export const MutfakGirisEkrani: React.FC = () => {
   const [sozlesmeler, setSozlesmeler] = useState<Record<string, HukukiSozlesme>>(() =>
     hukukiSozlesmeleriGetir()
   );
-  const [mutfakSozlesmesiOkundu, setMutfakSozlesmesiOkundu] = useState(false);
-  const [kvkkOkundu, setKvkkOkundu] = useState(false);
-  const [mutfakSozlesmesiOnayli, setMutfakSozlesmesiOnayli] = useState(false);
-  const [kvkkOnayli, setKvkkOnayli] = useState(false);
-  const [acikSozlesmeTuru, setAcikSozlesmeTuru] = useState<
-    'mutfak_kayit_sozlesmesi' | 'kvkk_aydinlatma' | null
-  >(null);
+  const [okunanTurler, setOkunanTurler] = useState<Record<string, boolean>>({});
+  const [onayliTurler, setOnayliTurler] = useState<Record<string, boolean>>({});
+  const [acikSozlesmeTuru, setAcikSozlesmeTuru] = useState<string | null>(null);
 
-  const sozlesmelerTamam =
-    mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli && kvkkOkundu && kvkkOnayli;
+  const kayitSozlesmeleri = useMemo(
+    () => mutfakKayitSozlesmeleriniFiltrele(sozlesmeler),
+    [sozlesmeler]
+  );
+
+  const zorunluSozlesmeler = useMemo(
+    () => kayitSozlesmeleri.filter((s) => s.zorunluMu !== false),
+    [kayitSozlesmeleri]
+  );
+
+  const onaylananSayisi = useMemo(
+    () => kayitSozlesmeleri.filter((s) => okunanTurler[s.tur] && onayliTurler[s.tur]).length,
+    [kayitSozlesmeleri, okunanTurler, onayliTurler]
+  );
+
+  const sozlesmelerTamam = useMemo(
+    () =>
+      zorunluSozlesmeler.length === 0 ||
+      zorunluSozlesmeler.every((s) => Boolean(okunanTurler[s.tur] && onayliTurler[s.tur])),
+    [zorunluSozlesmeler, okunanTurler, onayliTurler]
+  );
 
   const [hataMesaji, setHataMesaji] = useState<string | null>(null);
   const [sifreKurtarmaAcik, setSifreKurtarmaAcik] = useState(false);
@@ -68,6 +85,11 @@ export const MutfakGirisEkrani: React.FC = () => {
     hukukiSozlesmeleriCanliSenkronizeEt()
       .then((guncel) => setSozlesmeler(guncel))
       .catch(() => {});
+
+    const abonelikDurdur = hukukiSozlesmeleriCanliDinle((guncel) => {
+      setSozlesmeler(guncel);
+    });
+    return () => abonelikDurdur();
   }, []);
 
   const handleGiris = async (e: React.FormEvent) => {
@@ -120,6 +142,10 @@ export const MutfakGirisEkrani: React.FC = () => {
       return;
     }
 
+    const onaylananSozlesmeListesi = kayitSozlesmeleri.filter(
+      (s) => Boolean(okunanTurler[s.tur] && onayliTurler[s.tur])
+    );
+
     const basarili = await kayitOl({
       ad_soyad: adSoyad.trim(),
       isletme_adi: isletmeAdi.trim(),
@@ -132,8 +158,9 @@ export const MutfakGirisEkrani: React.FC = () => {
       esnaf_muafiyet_durumu: esnafMuafiyet,
       guvenlik_sorusu: guvenlikSorusu.trim(),
       guvenlik_cevabi: guvenlikCevabi.trim(),
-      sozlesme_onayli: mutfakSozlesmesiOnayli,
-      kvkk_onayli: kvkkOnayli,
+      sozlesme_onayli: Boolean(onayliTurler.mutfak_kayit_sozlesmesi ?? true),
+      kvkk_onayli: Boolean(onayliTurler.kvkk_aydinlatma ?? true),
+      onaylanan_sozlesmeler: onaylananSozlesmeListesi,
       rol: 'ev_mutfagi',
     });
 
@@ -425,7 +452,7 @@ export const MutfakGirisEkrani: React.FC = () => {
               </div>
             </div>
 
-            {/* Yasal Sözleşme Onayları */}
+            {/* Yasal Sözleşme Onayları (Süper Admin / Veritabanı ile Canlı Eşit) */}
             <div className="p-3.5 rounded-2xl bg-[#110417] border border-purple-800/60 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
@@ -433,94 +460,73 @@ export const MutfakGirisEkrani: React.FC = () => {
                   <span>Yasal Sözleşme ve Onaylar</span>
                 </div>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-950/90 text-purple-200 border border-purple-800/70">
-                  {(mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli ? 1 : 0) +
-                    (kvkkOkundu && kvkkOnayli ? 1 : 0)}{' '}
-                  / 2 Onaylandı
+                  {onaylananSayisi} / {kayitSozlesmeleri.length} Onaylandı
                 </span>
               </div>
 
-              <div className="flex items-start gap-2.5 text-[11px] text-gray-200 leading-relaxed">
-                <input
-                  type="checkbox"
-                  checked={mutfakSozlesmesiOnayli}
-                  onChange={(e) => {
-                    if (!mutfakSozlesmesiOkundu) {
-                      setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi');
-                      return;
-                    }
-                    setMutfakSozlesmesiOnayli(e.target.checked);
-                  }}
-                  className="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer shrink-0"
-                />
-                <div className="flex-1">
-                  <button
-                    type="button"
-                    onClick={() => setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi')}
-                    className="text-amber-300 underline hover:text-amber-200 font-semibold cursor-pointer text-left"
-                  >
-                    Ev Mutfağı & Aşçı İş Ortaklığı ve Hijyen Taahhüt Sözleşmesi
-                  </button>
-                  <span>&apos;ni okudum, şartları kabul ediyorum. </span>
-                  <span className="text-amber-400">*</span>
-                  <span className="block mt-0.5 text-[10px]">
-                    {mutfakSozlesmesiOkundu && mutfakSozlesmesiOnayli ? (
-                      <span className="text-emerald-400 font-semibold">✓ Okundu ve onaylandı</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setAcikSozlesmeTuru('mutfak_kayit_sozlesmesi')}
-                        className="text-amber-300/90 hover:text-amber-200 font-semibold cursor-pointer"
-                      >
-                        Okumak için tıklayın →
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </div>
+              {kayitSozlesmeleri.map((soz, idx) => {
+                const okundu = Boolean(okunanTurler[soz.tur]);
+                const onayli = Boolean(onayliTurler[soz.tur]);
+                const zorunlu = soz.zorunluMu !== false;
 
-              <div className="flex items-start gap-2.5 text-[11px] text-gray-200 leading-relaxed pt-1 border-t border-purple-900/40">
-                <input
-                  type="checkbox"
-                  checked={kvkkOnayli}
-                  onChange={(e) => {
-                    if (!kvkkOkundu) {
-                      setAcikSozlesmeTuru('kvkk_aydinlatma');
-                      return;
-                    }
-                    setKvkkOnayli(e.target.checked);
-                  }}
-                  className="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer shrink-0"
-                />
-                <div className="flex-1">
-                  <button
-                    type="button"
-                    onClick={() => setAcikSozlesmeTuru('kvkk_aydinlatma')}
-                    className="text-amber-300 underline hover:text-amber-200 font-semibold cursor-pointer text-left"
+                return (
+                  <div
+                    key={soz.tur}
+                    className={`flex items-start gap-2.5 text-[11px] text-gray-200 leading-relaxed ${
+                      idx > 0 ? 'pt-2 border-t border-purple-900/40' : ''
+                    }`}
                   >
-                    KVKK Aydınlatma ve Açık Rıza Metni
-                  </button>
-                  <span>&apos;ni okudum, kişisel verilerimin işlenmesini onaylıyorum. </span>
-                  <span className="text-amber-400">*</span>
-                  <span className="block mt-0.5 text-[10px]">
-                    {kvkkOkundu && kvkkOnayli ? (
-                      <span className="text-emerald-400 font-semibold">✓ Okundu ve onaylandı</span>
-                    ) : (
+                    <input
+                      type="checkbox"
+                      checked={onayli}
+                      onChange={(e) => {
+                        if (!okundu) {
+                          setAcikSozlesmeTuru(soz.tur);
+                          return;
+                        }
+                        setOnayliTurler((onceki) => ({
+                          ...onceki,
+                          [soz.tur]: e.target.checked,
+                        }));
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer shrink-0"
+                    />
+                    <div className="flex-1">
                       <button
                         type="button"
-                        onClick={() => setAcikSozlesmeTuru('kvkk_aydinlatma')}
-                        className="text-amber-300/90 hover:text-amber-200 font-semibold cursor-pointer"
+                        onClick={() => setAcikSozlesmeTuru(soz.tur)}
+                        className="text-amber-300 underline hover:text-amber-200 font-semibold cursor-pointer text-left"
                       >
-                        Okumak için tıklayın →
+                        {soz.baslik}
                       </button>
-                    )}
-                  </span>
-                </div>
-              </div>
+                      <span> metnini okudum, şartları kabul ediyorum. </span>
+                      {zorunlu ? (
+                        <span className="text-amber-400">*</span>
+                      ) : (
+                        <span className="text-gray-400">(İsteğe bağlı)</span>
+                      )}
+                      <span className="block mt-0.5 text-[10px]">
+                        {okundu && onayli ? (
+                          <span className="text-emerald-400 font-semibold">✓ Okundu ve onaylandı</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAcikSozlesmeTuru(soz.tur)}
+                            className="text-amber-300/90 hover:text-amber-200 font-semibold cursor-pointer"
+                          >
+                            Okumak için tıklayın →
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {!sozlesmelerTamam && (
               <p className="text-[11px] text-center text-amber-300/90 font-medium">
-                Başvuru butonunun aktif olması için yukarıdaki 2 sözleşmeyi de okuyup onaylayınız.
+                Başvuru butonunun aktif olması için zorunlu sözleşmeleri ({zorunluSozlesmeler.length} adet) okuyup onaylayınız.
               </p>
             )}
 
@@ -565,12 +571,9 @@ export const MutfakGirisEkrani: React.FC = () => {
         sozlesme={okunanSozlesme}
         kapat={() => setAcikSozlesmeTuru(null)}
         onaylaVeKapat={() => {
-          if (acikSozlesmeTuru === 'mutfak_kayit_sozlesmesi') {
-            setMutfakSozlesmesiOkundu(true);
-            setMutfakSozlesmesiOnayli(true);
-          } else if (acikSozlesmeTuru === 'kvkk_aydinlatma') {
-            setKvkkOkundu(true);
-            setKvkkOnayli(true);
+          if (acikSozlesmeTuru) {
+            setOkunanTurler((onceki) => ({ ...onceki, [acikSozlesmeTuru]: true }));
+            setOnayliTurler((onceki) => ({ ...onceki, [acikSozlesmeTuru]: true }));
           }
           setAcikSozlesmeTuru(null);
         }}

@@ -13,7 +13,17 @@ export type SozlesmeTuru =
   | 'iptal_iade_kosullari'
   | string;
 
-export type SozlesmeKonumu = 'kayit' | 'siparis' | 'asci_basvuru' | 'kurye_basvuru' | 'genel';
+export type SozlesmeKonumu =
+  | 'kayit'
+  | 'siparis'
+  | 'asci_basvuru'
+  | 'kurye_basvuru'
+  | 'genel'
+  | 'mutfak'
+  | 'kurye'
+  | 'tumu'
+  | 'her_ikisi'
+  | string;
 
 export type HukukiIslemTuru =
   | 'kayit'
@@ -26,6 +36,7 @@ export type HukukiIslemTuru =
 export type DamgaDurumu = 'rfc3161_onayli' | 'sunucu_muhurlu' | 'yerel_ozet';
 
 export interface HukukiSozlesme {
+  id?: string;
   tur: SozlesmeTuru;
   baslik: string;
   kisaBaslik: string;
@@ -34,6 +45,10 @@ export interface HukukiSozlesme {
   icerik: string;
   zorunluMu: boolean;
   konum?: SozlesmeKonumu;
+  aktifMi?: boolean;
+  hedefRoller?: string[];
+  hedefPaneller?: string[];
+  sira?: number;
   silinebilirMi?: boolean;
 }
 

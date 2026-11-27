@@ -16,7 +16,7 @@ import { kullaniciHafizasiKullan } from '@/src/OrtakHavuz/KullaniciHafizasi';
 import { hukukiDelilDamgalaVeKaydet } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukiDelilServisi';
 import { HukukiOnayLogu, HukukiSozlesme } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/tipler';
 import {
-  MUTFAK_TEMEL_SOZLESME_TURLERI,
+  EK_MUTFAK_SOZLESME_TANIMLARI,
   MutfakKimlikOzeti,
   damgaDurumuEtiketi,
   islemTuruTurkce,
@@ -26,6 +26,10 @@ import {
   sozlesmeBelgesiHtmlIndir,
   tsaTokenDosyasiIndir,
 } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/mutfakSozlesmeIndirmeServisi';
+import {
+  hukukiSozlesmeleriCanliDinle,
+  mutfakKayitSozlesmeleriniFiltrele,
+} from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
 import { MutfakSozlesmeOnizlemeModali } from './MutfakSozlesmeOnizlemeModali';
 
 interface MutfakOnaylananSozlesmelerSekmesiProps {
@@ -76,6 +80,13 @@ export const MutfakOnaylananSozlesmelerSekmesi: React.FC<
 
   useEffect(() => {
     verileriYukle();
+    const abonelikDurdur = hukukiSozlesmeleriCanliDinle((canliHarita) => {
+      setSozlesmeHaritasi({
+        ...EK_MUTFAK_SOZLESME_TANIMLARI,
+        ...canliHarita,
+      });
+    });
+    return () => abonelikDurdur();
   }, [mutfakBilgisi.mutfakId, mutfakBilgisi.kullaniciKimlik, mutfakBilgisi.telefon]);
 
   const enSonOnayLoguBul = (sozlesmeTuru: string): HukukiOnayLogu | null => {
@@ -119,10 +130,22 @@ export const MutfakOnaylananSozlesmelerSekmesi: React.FC<
   };
 
   const temelSozlesmeler = useMemo(() => {
-    return MUTFAK_TEMEL_SOZLESME_TURLERI.map((tur) => sozlesmeHaritasi[tur]).filter(
-      (s): s is HukukiSozlesme => Boolean(s)
-    );
-  }, [sozlesmeHaritasi]);
+    const canliListe = mutfakKayitSozlesmeleriniFiltrele(sozlesmeHaritasi);
+    const eklenenTurler = new Set(canliListe.map((s) => s.tur));
+
+    // Kayıt veya geçmiş onay loglarında bulunan ancak güncel listede gizli kalmış türleri de ekle
+    const ekLogSozlesmeleri: HukukiSozlesme[] = [];
+    for (const log of onayLoglari) {
+      if (log.islemTuru === 'kayit' && log.sozlesmeTuru && !eklenenTurler.has(log.sozlesmeTuru)) {
+        const tanim = sozlesmeHaritasi[log.sozlesmeTuru];
+        if (tanim) {
+          eklenenTurler.add(log.sozlesmeTuru);
+          ekLogSozlesmeleri.push(tanim);
+        }
+      }
+    }
+    return [...canliListe, ...ekLogSozlesmeleri];
+  }, [sozlesmeHaritasi, onayLoglari]);
 
   const operasyonelDamgalar = useMemo(() => {
     return onayLoglari.filter((log) => log.islemTuru !== 'kayit').slice(0, 15);

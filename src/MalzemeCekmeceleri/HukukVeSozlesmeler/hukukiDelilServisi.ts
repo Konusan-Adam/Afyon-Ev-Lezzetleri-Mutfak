@@ -1,6 +1,7 @@
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { canliFirebaseAktifMi, firebaseVeritabani } from '@/src/veritabani/FirebaseIstemcisi';
 import { firestoreHatasiniYonet, IslemTipi } from '@/src/veritabani/FirebaseHataYoneticisi';
+import { apiYoluOlustur } from '@/src/MalzemeCekmeceleri/apiAdresiYardimcisi';
 import type { DamgaDurumu, HukukiIslemTuru, HukukiOnayLogu } from './tipler';
 
 const YEREL_LOGLAR_ANAHTARI = 'afyon_hukuki_onay_loglari_v2';
@@ -161,7 +162,7 @@ export async function hukukiDelilDamgalaVeKaydet(
   } | null = null;
 
   try {
-    const yanit = await fetch('/api/zaman-damgasi/damgala', {
+    const yanit = await fetch(apiYoluOlustur('/api/zaman-damgasi/damgala'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

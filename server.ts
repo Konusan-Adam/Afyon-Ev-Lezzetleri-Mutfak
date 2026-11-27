@@ -69,6 +69,24 @@ async function startServer() {
   app.use(express.json({ limit: '30mb' }));
   app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
+  const IZINLI_APK_KAYNAKLARI = new Set([
+    'https://appassets.androidplatform.net',
+    'http://localhost',
+    'https://localhost',
+  ]);
+  app.use('/api', (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && IZINLI_APK_KAYNAKLARI.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   // 1. Görsel Yükleme Köprüsü (/api/gorsel-yukle)
   app.post('/api/gorsel-yukle', async (req: Request, res: Response) => {
     try {

@@ -1,6 +1,11 @@
-import { HukukiSozlesme, HukukiOnayLogu, CerezTercihleri, SozlesmeTuru } from './tipler';
+import { HukukiSozlesme, HukukiOnayLogu, CerezTercihleri } from './tipler';
 import { canliFirebaseAktifMi } from '@/src/veritabani/FirebaseIstemcisi';
-import { koleksiyonGetir, belgeKaydet, belgeSil } from '@/src/veritabani/FirebaseKoleksiyonServisi';
+import {
+  koleksiyonGetir,
+  koleksiyonuCanliDinle,
+  belgeKaydet,
+  belgeSil,
+} from '@/src/veritabani/FirebaseKoleksiyonServisi';
 import {
   hukukiDelilDamgalaVeKaydet,
   yeniDelilKimligiUret,
@@ -38,7 +43,7 @@ MADDE 4 - KOMİSYON, HAKEDİŞ VE ÖDEMELER
 4.2. Başarıyla tamamlanan siparişlerin hakedişleri, mutfağın talep ettiği IBAN numarasına mutabakat takvimine göre eksiksiz aktarılır.
 
 MADDE 5 - FESİH VE YETKİLİ MAHKEME
-Gıda güvenliğini tehlikeye atan, platform itibarını zedeleyen veya taahhütlerini yerine getirmeyen mutfakların üyeliği derhal askıya alınabilir. İhtilaflarda Afyonkarahisar Mahkemeleri ve İcra Daireleri yetkilidir.`
+Gıda güvenliğini tehlikeye atan, platform itibarını zedeleyen veya taahhütlerini yerine getirmeyen mutfakların üyeliği derhal askıya alınabilir. İhtilaflarda Afyonkarahisar Mahkemeleri ve İcra Daireleri yetkilidir.`,
   },
   kurye_kayit_sozlesmesi: {
     tur: 'kurye_kayit_sozlesmesi',
@@ -62,7 +67,7 @@ MADDE 3 - SEFER BAŞINA HAKEDİŞ VE ÖDEMELER
 3.2. Biriken bakiye, Kurye Paneli üzerinden talep edildiğinde kayıtlı banka hesabına aktarılır.
 
 MADDE 4 - GÜVENLİK VE SORUMLULUK
-Kuryenin kendi aracının muayene, sigorta ve ehliyet geçerliliğinden bizzat kendisi sorumludur.`
+Kuryenin kendi aracının muayene, sigorta ve ehliyet geçerliliğinden bizzat kendisi sorumludur.`,
   },
   kullanici_sozlesmesi: {
     tur: 'kullanici_sozlesmesi',
@@ -80,7 +85,7 @@ Afyon Ev Lezzetleri platformuna üye olan veya sipariş veren her kullanıcı bu
 Kullanıcı, hesabına ait telefon numarası ve şifrenin güvenliğinden kendisi sorumludur. Gerçek dışı veya başkasına ait telefon numarasıyla işlem yapılması hukuki ve cezai sorumluluk doğurur.
 
 3. KULLANIM KURALLARI
-Platform üzerinde asılsız sipariş vermek, kuryeyi kasıtlı olarak bekletmek veya teslimatı keyfi reddetmek kullanıcının hesabının kalıcı olarak engellenmesine ve yasal işlem başlatılmasına yol açar.`
+Platform üzerinde asılsız sipariş vermek, kuryeyi kasıtlı olarak bekletmek veya teslimatı keyfi reddetmek kullanıcının hesabının kalıcı olarak engellenmesine ve yasal işlem başlatılmasına yol açar.`,
   },
   kvkk_aydinlatma: {
     tur: 'kvkk_aydinlatma',
@@ -96,7 +101,7 @@ Veri Sorumlusu sıfatıyla Afyon Ev Lezzetleri olarak;
 1. İŞLENEN KİŞİSEL VERİLER: Ad, Soyad, Cep Telefon Numarası, Teslimat Adresi, Sipariş Geçmişi, Cihaz IP ve Tarayıcı Bilgileri.
 2. VERİ İŞLEME AMAÇLARI: Siparişlerin doğru adrese ulaştırılması, kurye koordinasyonu, yasal faturalandırma ve müşteri memnuniyeti analizi.
 3. VERİ AKTARIMI: Verileriniz yalnızca siparişi hazırlayan Mutfak ile siparişi getiren Kurye'ye teslimatın ifası amacıyla sınırlı olarak aktarılır. Üçüncü şahıslara ticari amaçla satılamaz.
-4. HAKLARINIZ: KVKK Madde 11 uyarınca dilediğiniz zaman verilerinizin silinmesini veya düzeltilmesini talep edebilirsiniz.`
+4. HAKLARINIZ: KVKK Madde 11 uyarınca dilediğiniz zaman verilerinizin silinmesini veya düzeltilmesini talep edebilirsiniz.`,
   },
   mesafeli_satis: {
     tur: 'mesafeli_satis',
@@ -115,7 +120,7 @@ MADDE 2 - SÖZLEŞMENİN KONUSU
 ALICI'nın platform üzerinden siparişini verdiği ev yemeklerinin satışı ve teslimi ile ilgili hak ve yükümlülüklerin saptanmasıdır.
 
 MADDE 3 - CAYMA HAKKI İSTİSNASI
-6502 sayılı Kanun uyarınca; çabuk bozulabilen taze sıcak yemeklerde cayma hakkı bulunmamaktadır.`
+6502 sayılı Kanun uyarınca; çabuk bozulabilen taze sıcak yemeklerde cayma hakkı bulunmamaktadır.`,
   },
   cerez_politikasi: {
     tur: 'cerez_politikasi',
@@ -126,45 +131,90 @@ MADDE 3 - CAYMA HAKKI İSTİSNASI
     zorunluMu: false,
     konum: 'genel',
     silinebilirMi: false,
-    icerik: `Afyon Ev Lezzetleri olarak sitemizde güvenli bir alışveriş deneyimi sunmak amacıyla zorunlu ve analitik çerezler kullanmaktayız.`
-  }
+    icerik: `Afyon Ev Lezzetleri olarak sitemizde güvenli bir alışveriş deneyimi sunmak amacıyla zorunlu ve analitik çerezler kullanmaktayız.`,
+  },
 };
+
+function firestoreSozlesmeleriniHaritayaCevir(
+  fbSozlesmeler: HukukiSozlesme[]
+): Record<string, HukukiSozlesme> {
+  // Tek gerçek kaynak Firestore `sozlesmeler` koleksiyonudur; Süper Admin'den eklenen, güncellenen veya silinen kayıtlar aynen yansır.
+  const harita: Record<string, HukukiSozlesme> = {};
+  fbSozlesmeler.forEach((s) => {
+    const turKodu = (s.tur || s.id || '').trim();
+    if (!turKodu) return;
+    harita[turKodu] = {
+      ...s,
+      tur: turKodu,
+      kisaBaslik: s.kisaBaslik || s.baslik || turKodu,
+      versiyon: s.versiyon || '1.0.0',
+      zorunluMu: s.zorunluMu !== false,
+    };
+  });
+  return harita;
+}
+
+export function mutfakKayitSozlesmeleriniFiltrele(
+  harita: Record<string, HukukiSozlesme>
+): HukukiSozlesme[] {
+  const mutfakKonumlari = new Set(['asci_basvuru', 'mutfak', 'tumu', 'her_ikisi']);
+  const mutfakRolleri = new Set(['mutfak', 'ev_mutfagi', 'ticari_restoran', 'asci_basvuru', 'tumu']);
+
+  const uygunlar = Object.values(harita).filter((s) => {
+    if (s.aktifMi === false) return false;
+    if (s.tur === 'cerez_politikasi') return false;
+
+    const roller = Array.isArray(s.hedefRoller) ? s.hedefRoller : [];
+    const paneller = Array.isArray(s.hedefPaneller) ? s.hedefPaneller : [];
+    if (roller.length > 0 || paneller.length > 0) {
+      return (
+        roller.some((r) => mutfakRolleri.has(String(r).toLowerCase())) ||
+        paneller.some((p) => mutfakKonumlari.has(String(p).toLowerCase()))
+      );
+    }
+
+    const konum = String(s.konum || 'genel').toLowerCase();
+    if (mutfakKonumlari.has(konum)) return true;
+    if (konum === 'genel') return true;
+    return false;
+  });
+
+  const oncelik = (tur: string): number => {
+    if (tur === 'mutfak_kayit_sozlesmesi') return 1;
+    if (tur === 'kvkk_aydinlatma') return 2;
+    return 10;
+  };
+
+  return uygunlar.sort((a, b) => {
+    const oa = typeof a.sira === 'number' ? a.sira : oncelik(a.tur);
+    const ob = typeof b.sira === 'number' ? b.sira : oncelik(b.tur);
+    if (oa !== ob) return oa - ob;
+    return (a.baslik || '').localeCompare(b.baslik || '', 'tr');
+  });
+}
 
 export const hukukiSozlesmeleriGetir = (): Record<string, HukukiSozlesme> => {
   try {
-    const silinenler: string[] = JSON.parse(localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]');
     const kayitli = localStorage.getItem(YEREL_SOZLESMELER_ANAHTARI);
-    let sonuc: Record<string, HukukiSozlesme> = { ...VARSAYILAN_SOZLESMELER };
     if (kayitli) {
-      sonuc = { ...sonuc, ...JSON.parse(kayitli) };
+      const parsed = JSON.parse(kayitli);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
     }
-    // Silinmiş sözleşmeleri listeden temizle
-    silinenler.forEach((tur) => {
-      delete sonuc[tur];
-    });
-    return sonuc;
   } catch (e) {
     console.warn('Sözleşmeler yüklenemedi, varsayılanlar devrede:', e);
   }
   return VARSAYILAN_SOZLESMELER;
 };
 
-// Canlı Firestore'dan sözleşmeleri arka planda çekip senkronize et
+// Canlı Firestore'dan sözleşmeleri tek gerçek kaynak olarak çekip senkronize et
 export const hukukiSozlesmeleriCanliSenkronizeEt = async (): Promise<Record<string, HukukiSozlesme>> => {
   if (canliFirebaseAktifMi()) {
     try {
       const fbSozlesmeler = await koleksiyonGetir<HukukiSozlesme>('sozlesmeler');
-      const silinenler: string[] = JSON.parse(localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]');
       if (fbSozlesmeler && fbSozlesmeler.length > 0) {
-        const sozlesmeHaritasi: Record<string, HukukiSozlesme> = { ...VARSAYILAN_SOZLESMELER };
-        fbSozlesmeler.forEach(s => {
-          if (s.tur && !silinenler.includes(s.tur)) {
-            sozlesmeHaritasi[s.tur] = s;
-          }
-        });
-        silinenler.forEach((tur) => {
-          delete sozlesmeHaritasi[tur];
-        });
+        const sozlesmeHaritasi = firestoreSozlesmeleriniHaritayaCevir(fbSozlesmeler);
         localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(sozlesmeHaritasi));
         return sozlesmeHaritasi;
       } else {
@@ -172,6 +222,8 @@ export const hukukiSozlesmeleriCanliSenkronizeEt = async (): Promise<Record<stri
         for (const anahtar of Object.keys(VARSAYILAN_SOZLESMELER)) {
           await belgeKaydet('sozlesmeler', anahtar, VARSAYILAN_SOZLESMELER[anahtar]);
         }
+        localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(VARSAYILAN_SOZLESMELER));
+        return VARSAYILAN_SOZLESMELER;
       }
     } catch (hata) {
       console.warn('Firebase sözleşme senkronizasyon hatası:', hata);
@@ -180,12 +232,30 @@ export const hukukiSozlesmeleriCanliSenkronizeEt = async (): Promise<Record<stri
   return hukukiSozlesmeleriGetir();
 };
 
+export const hukukiSozlesmeleriCanliDinle = (
+  geriCagirim: (sozlesmeler: Record<string, HukukiSozlesme>) => void
+): (() => void) => {
+  if (!canliFirebaseAktifMi()) {
+    geriCagirim(hukukiSozlesmeleriGetir());
+    return () => {};
+  }
+
+  return koleksiyonuCanliDinle<HukukiSozlesme>('sozlesmeler', (fbSozlesmeler) => {
+    if (!fbSozlesmeler || fbSozlesmeler.length === 0) return;
+    const harita = firestoreSozlesmeleriniHaritayaCevir(fbSozlesmeler);
+    try {
+      localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(harita));
+    } catch {}
+    geriCagirim(harita);
+  });
+};
+
 export const sozlesmeGuncelle = (sozlesme: HukukiSozlesme): boolean => {
   try {
     const mevcut = hukukiSozlesmeleriGetir();
     const guncelSozlesme = {
       ...sozlesme,
-      guncellenmeTarihi: new Date().toISOString().split('T')[0]
+      guncellenmeTarihi: new Date().toISOString().split('T')[0],
     };
     mevcut[sozlesme.tur] = guncelSozlesme;
     localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(mevcut));
@@ -200,7 +270,9 @@ export const sozlesmeGuncelle = (sozlesme: HukukiSozlesme): boolean => {
   }
 };
 
-export const yeniSozlesmeEkle = (sozlesme: Omit<HukukiSozlesme, 'guncellenmeTarihi' | 'silinebilirMi'>): boolean => {
+export const yeniSozlesmeEkle = (
+  sozlesme: Omit<HukukiSozlesme, 'guncellenmeTarihi' | 'silinebilirMi'>
+): boolean => {
   try {
     const mevcut = hukukiSozlesmeleriGetir();
     const kod = sozlesme.tur.trim().toLowerCase().replace(/\s+/g, '_');
@@ -208,15 +280,16 @@ export const yeniSozlesmeEkle = (sozlesme: Omit<HukukiSozlesme, 'guncellenmeTari
       ...sozlesme,
       tur: kod,
       guncellenmeTarihi: new Date().toISOString().split('T')[0],
-      silinebilirMi: true
+      silinebilirMi: true,
     };
     mevcut[kod] = yeni;
     localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(mevcut));
 
-    // Silinenler listesinde varsa çıkar
     try {
-      const silinenler: string[] = JSON.parse(localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]');
-      const guncelSilinenler = silinenler.filter(s => s !== kod);
+      const silinenler: string[] = JSON.parse(
+        localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]'
+      );
+      const guncelSilinenler = silinenler.filter((s) => s !== kod);
       localStorage.setItem(SILINEN_SOZLESMELER_ANAHTARI, JSON.stringify(guncelSilinenler));
     } catch {}
 
@@ -237,16 +310,16 @@ export const sozlesmeSil = (tur: string): boolean => {
       delete mevcut[tur];
       localStorage.setItem(YEREL_SOZLESMELER_ANAHTARI, JSON.stringify(mevcut));
 
-      // Silinenler defterine kaydet ki geri yüklenmesin
       try {
-        const silinenler: string[] = JSON.parse(localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]');
+        const silinenler: string[] = JSON.parse(
+          localStorage.getItem(SILINEN_SOZLESMELER_ANAHTARI) || '[]'
+        );
         if (!silinenler.includes(tur)) {
           silinenler.push(tur);
           localStorage.setItem(SILINEN_SOZLESMELER_ANAHTARI, JSON.stringify(silinenler));
         }
       } catch {}
 
-      // Firestore koleksiyonundan da kalıcı olarak sil
       if (canliFirebaseAktifMi()) {
         belgeSil('sozlesmeler', tur).catch((err) => {
           console.warn('Firebase sözleşme silme uyarısı:', err);
@@ -278,7 +351,6 @@ export const hukukiLoglariCanliGetir = async (): Promise<HukukiOnayLogu[]> => {
     try {
       const fbLoglar = await koleksiyonGetir<HukukiOnayLogu>('hukuki_onay_loglari');
       if (fbLoglar && fbLoglar.length > 0) {
-        // En yeni tarih en üstte
         fbLoglar.sort((a, b) => (b.kimlik > a.kimlik ? 1 : -1));
         localStorage.setItem(YEREL_LOGLAR_ANAHTARI, JSON.stringify(fbLoglar));
         return fbLoglar;
@@ -345,7 +417,7 @@ export const cerezTercihleriniKaydet = (tercihler: CerezTercihleri): void => {
       sozlesmeTuru: 'cerez_politikasi',
       sozlesmeVersiyonu: '1.0.0',
       islemTuru: 'cerez_onayi',
-      onaylandiMi: tercihler.onaylandi
+      onaylandiMi: tercihler.onaylandi,
     });
   } catch (e) {
     console.error('Çerez tercihleri kaydedilemedi:', e);

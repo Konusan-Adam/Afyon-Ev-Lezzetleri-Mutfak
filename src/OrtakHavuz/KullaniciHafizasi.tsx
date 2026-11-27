@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Kullanici, KullaniciRolu } from '@/src/veritabani/VeriTipleri';
+import type { HukukiSozlesme } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/tipler';
 import {
   MutfakGirisSonucu,
   veritabaninaKullaniciKaydet,
@@ -46,6 +47,7 @@ interface KullaniciHafizaTipi {
     belgeler?: any;
     sozlesme_onayli?: boolean;
     kvkk_onayli?: boolean;
+    onaylanan_sozlesmeler?: HukukiSozlesme[];
   }) => Promise<boolean>;
   cikisYap: () => void;
   aktifKullaniciBilgisiGuncelle: (guncelAlanlar: Partial<Kullanici>) => void;
@@ -155,6 +157,7 @@ export const KullaniciSaglayici: React.FC<{ children: React.ReactNode }> = ({ ch
     guvenlik_cevabi?: string;
     sozlesme_onayli?: boolean;
     kvkk_onayli?: boolean;
+    onaylanan_sozlesmeler?: HukukiSozlesme[];
   }): Promise<boolean> => {
     setYukleniyor(true);
     const kaydolunankullanici = await veritabaninaKullaniciKaydet(bilgiler);

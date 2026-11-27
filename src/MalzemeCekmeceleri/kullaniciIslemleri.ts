@@ -16,6 +16,7 @@ import { patronBildirimiEkle } from '@/src/MalzemeCekmeceleri/PatronBildirimServ
 import {
   hukukiSozlesmeleriGetir,
 } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukDeposu';
+import type { HukukiSozlesme } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/tipler';
 import { hukukiDelilDamgalaVeKaydet } from '@/src/MalzemeCekmeceleri/HukukVeSozlesmeler/hukukiDelilServisi';
 import {
   GUVENLIK_SORULARI,
@@ -49,6 +50,7 @@ export async function veritabaninaKullaniciKaydet(
     belgeler?: any;
     sozlesme_onayli?: boolean;
     kvkk_onayli?: boolean;
+    onaylanan_sozlesmeler?: HukukiSozlesme[];
   }
 ): Promise<Kullanici | null> {
   const dogrulama = telefonGecerliMi(yeniKullanici.telefon);
@@ -124,8 +126,38 @@ export async function veritabaninaKullaniciKaydet(
   try {
     const sozlesmeler = hukukiSozlesmeleriGetir();
     const damgaGorevleri: Promise<unknown>[] = [];
+    const damgalananTurler = new Set<string>();
 
-    if (yeniKullanici.sozlesme_onayli) {
+    const dinamikOnaylar = Array.isArray(yeniKullanici.onaylanan_sozlesmeler)
+      ? yeniKullanici.onaylanan_sozlesmeler
+      : [];
+
+    for (const soz of dinamikOnaylar) {
+      if (!soz?.tur || damgalananTurler.has(soz.tur)) continue;
+      damgalananTurler.add(soz.tur);
+      damgaGorevleri.push(
+        hukukiDelilDamgalaVeKaydet({
+          sozlesmeTuru: soz.tur,
+          sozlesmeVersiyonu: soz.versiyon || '1.0.0',
+          sozlesmeIcerigi: soz.icerik,
+          ilgiliKayitId: kimlikId,
+          kullaniciKimlik: kimlikId,
+          kullaniciTelefon: duzgunTelefon,
+          kullaniciAdSoyad: kullaniciKaydi.ad_soyad,
+          islemTuru: 'kayit',
+          onaylandiMi: true,
+          ekDetay: {
+            isletmeAdi: kullaniciKaydi.isletme_adi,
+            calismaModeli: kullaniciKaydi.calisma_modeli,
+            hijyenBelgesiDurumu: kullaniciKaydi.hijyen_belgesi_durumu,
+            esnafMuafiyetDurumu: kullaniciKaydi.esnaf_muafiyet_durumu,
+          },
+        })
+      );
+    }
+
+    if (yeniKullanici.sozlesme_onayli && !damgalananTurler.has('mutfak_kayit_sozlesmesi')) {
+      damgalananTurler.add('mutfak_kayit_sozlesmesi');
       damgaGorevleri.push(
         hukukiDelilDamgalaVeKaydet({
           sozlesmeTuru: 'mutfak_kayit_sozlesmesi',
@@ -147,7 +179,8 @@ export async function veritabaninaKullaniciKaydet(
       );
     }
 
-    if (yeniKullanici.kvkk_onayli) {
+    if (yeniKullanici.kvkk_onayli && !damgalananTurler.has('kvkk_aydinlatma')) {
+      damgalananTurler.add('kvkk_aydinlatma');
       damgaGorevleri.push(
         hukukiDelilDamgalaVeKaydet({
           sozlesmeTuru: 'kvkk_aydinlatma',
